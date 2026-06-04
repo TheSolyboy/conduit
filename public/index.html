@@ -3,85 +3,116 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=1280" />
-  <title>Conduit</title>
+  <title>conduit</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" />
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
   <div class="app">
+
     <header class="hdr">
-      <div class="hdr-left">
-        <span class="wordmark">CONDUIT</span>
-        <span class="hdr-divider"></span>
-        <span class="status-dot" id="status-dot" data-state="connecting"></span>
+      <span class="brand">conduit</span>
+      <span class="brand-tag">v0.1</span>
+
+      <span class="hdr-sep">·</span>
+
+      <span class="status" id="status" data-state="connecting">
+        <span class="status-dot"></span>
         <span class="status-text" id="status-text">connecting</span>
-      </div>
-      <nav class="hdr-nav">
-        <a href="#/" class="nav-link" data-route="dashboard">DASHBOARD</a>
-        <a href="#/settings" class="nav-link" data-route="settings">SETTINGS</a>
+      </span>
+
+      <span class="hdr-sep">·</span>
+
+      <span class="stat"><span class="stat-k">iface</span><span class="stat-v" id="hs-iface">—</span></span>
+      <span class="stat"><span class="stat-k">pps</span><span class="stat-v" id="hs-pps">0</span></span>
+      <span class="stat"><span class="stat-k">ports</span><span class="stat-v" id="hs-ports">0</span></span>
+      <span class="stat"><span class="stat-k">up</span><span class="stat-v" id="hs-uptime">—</span></span>
+
+      <nav class="tabs">
+        <a href="#/" class="tab" data-route="dashboard">live</a>
+        <a href="#/settings" class="tab" data-route="settings">settings</a>
       </nav>
     </header>
 
     <div class="banner" id="banner" hidden></div>
 
     <main class="view" id="view-dashboard">
-      <div class="col-groups">
-        <div class="cg cg-port">PORT</div>
-        <div class="cg cg-traffic">TRAFFIC</div>
-        <div class="cg cg-rate">RATE</div>
-        <div class="cg cg-meta">META</div>
-      </div>
-      <div class="col-heads">
-        <div class="ch ch-dot"></div>
-        <div class="ch ch-portnum">#</div>
-        <div class="ch ch-name">NAME</div>
-        <div class="ch ch-spark">PACKETS · last 60</div>
-        <div class="ch ch-in">IN<span class="ch-sub">·avg30</span></div>
-        <div class="ch ch-out">OUT<span class="ch-sub">·avg30</span></div>
-        <div class="ch ch-rps">REQ/S</div>
-        <div class="ch ch-src">TOP SOURCE</div>
-        <div class="ch ch-total">TOTAL</div>
-        <div class="ch ch-seen">LAST SEEN</div>
-      </div>
-      <div class="rows" id="rows"></div>
-      <div class="empty" id="empty" hidden>
-        <span>No ports monitored yet.</span>
-        <a href="#/settings">Configure in settings →</a>
+      <div class="grid">
+        <div class="grid-head">
+          <div class="gh gh-name">port</div>
+          <div class="gh gh-chart">traffic <span class="gh-sub">last 60</span></div>
+          <div class="gh gh-in">in <span class="gh-sub">avg30</span></div>
+          <div class="gh gh-out">out <span class="gh-sub">avg30</span></div>
+          <div class="gh gh-rps">req/s</div>
+          <div class="gh gh-src">top source</div>
+          <div class="gh gh-total">total</div>
+          <div class="gh gh-last">last</div>
+        </div>
+        <div class="rows" id="rows"></div>
+        <div class="empty" id="empty" hidden>
+          <div class="empty-line">no ports monitored</div>
+          <a href="#/settings" class="empty-link">add one in settings →</a>
+        </div>
       </div>
     </main>
 
     <main class="view" id="view-settings" hidden>
       <section class="panel">
-        <h2 class="panel-title">MONITORED PORTS</h2>
+        <div class="panel-head">
+          <span class="panel-title">monitored ports</span>
+          <span class="panel-count" id="ports-count">0</span>
+        </div>
+
         <div class="setlist" id="setlist"></div>
 
         <form class="add-form" id="add-form">
-          <input type="number" id="add-port" placeholder="port"  min="1" max="65535" required />
-          <input type="text"   id="add-name" placeholder="display name" maxlength="40" required />
-          <button type="submit" class="btn-ghost">ADD</button>
+          <div class="add-form-row">
+            <label class="field">
+              <span class="field-label">port</span>
+              <input type="number" id="add-port" placeholder="8080" min="1" max="65535" required />
+            </label>
+            <label class="field field-wide">
+              <span class="field-label">display name <span class="field-opt">(optional, blank = auto)</span></span>
+              <input type="text" id="add-name" placeholder="auto" maxlength="40" />
+            </label>
+            <button type="submit" class="btn">add</button>
+          </div>
         </form>
       </section>
 
       <section class="panel">
-        <h2 class="panel-title">DASHBOARD</h2>
-        <div class="setrow setrow-static">
-          <label class="setrow-label" for="dash-port">listen port</label>
-          <input type="number" id="dash-port" min="1" max="65535" />
-          <span class="hint">requires restart</span>
+        <div class="panel-head">
+          <span class="panel-title">dashboard</span>
         </div>
-        <div class="setrow setrow-static">
-          <label class="setrow-label" for="iface">capture interface</label>
-          <input type="text" id="iface" placeholder="auto" />
-          <span class="hint">blank = auto-detect, requires restart</span>
+
+        <div class="field-grid">
+          <label class="field">
+            <span class="field-label">listen port</span>
+            <input type="number" id="dash-port" min="1" max="65535" />
+            <span class="field-hint">requires restart</span>
+          </label>
+          <label class="field">
+            <span class="field-label">capture interface</span>
+            <input type="text" id="iface" placeholder="auto" />
+            <span class="field-hint">blank = auto, requires restart</span>
+          </label>
         </div>
+
         <div class="actions">
-          <button type="button" class="btn-primary" id="save-dash">SAVE</button>
+          <button type="button" class="btn" id="save-dash">save</button>
           <span class="actions-hint" id="save-hint"></span>
         </div>
       </section>
     </main>
 
     <footer class="ftr">
-      <span class="ftr-meta" id="ftr-meta">—</span>
+      <span class="ftr-meta" id="ftr-meta">conduit/0.1</span>
+      <span class="ftr-kbd">
+        <span class="kbd-hint"><kbd>g</kbd>&nbsp;live</span>
+        <span class="kbd-hint"><kbd>s</kbd>&nbsp;settings</span>
+      </span>
     </footer>
   </div>
 

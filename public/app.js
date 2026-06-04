@@ -1,31 +1,96 @@
 /* ──────────────────────────────────────────────────────────────
-   Conduit dashboard client — WS stream + canvas sparklines
+   conduit — dashboard client
+   WS stream · queue-based bar animation · subtle row pulses
    ────────────────────────────────────────────────────────────── */
 
 (() => {
   'use strict';
+
+  // ── port -> icon mapping ────────────────────────────────────
+  // slug refers to a Simple Icons CDN slug. null = no logo available;
+  // the row falls back to showing just the port number.
+
+  const PORT_ICONS = {
+    21:    'filezilla',
+    22:    null,         // SSH — no good Simple Icons slug (openssh is not in the set)
+    25:    null,
+    53:    null,
+    80:    'nginx',
+    110:   null,
+    143:   null,
+    443:   'nginx',
+    465:   null,
+    587:   null,
+    993:   null,
+    995:   null,
+    1433:  'microsoftsqlserver',
+    2379:  'etcd',
+    3000:  'nodedotjs',
+    3001:  'nodedotjs',
+    3306:  'mysql',
+    4200:  'angular',
+    5000:  'flask',
+    5173:  'vite',
+    5432:  'postgresql',
+    5672:  'rabbitmq',
+    6379:  'redis',
+    8000:  'python',
+    8080:  null,
+    8443:  'nginx',
+    8888:  'jupyter',
+    9000:  null,
+    9092:  'apachekafka',
+    9200:  'elasticsearch',
+    9418:  'git',
+    11211: 'memcached',
+    15672: 'rabbitmq',
+    25565: 'minecraft',
+    27017: 'mongodb'
+  };
+
+  function isAutoName(port, name) {
+    return name === `Port ${port}` || !name;
+  }
 
   // ── state ───────────────────────────────────────────────────
 
   const state = {
     config: { ports: [], dashboardPort: 4200, interface: null },
     stats: {},
-    prevStats: {},
     captureOk: false,
     captureMsg: 'connecting…',
-    wsState: 'connecting'
+    wsState: 'connecting',
+    bootAt: Date.now()
   };
 
-  const sparkState = new Map(); // port -> { packets: [{dir,size,ts}], pendingShift }
-  const SPARK_W = 180, SPARK_H = 28;
-  const BAR_STRIDE = 3, BAR_W = 2;
-  const MAX_BARS = Math.floor(SPARK_W / BAR_STRIDE);
-  const ANIM_MS = 160;
-  const FLOOR_SIZE = 200;
+  // per-port animation buffer
+  // { bars, queue, current, pulse, pulseLastTick }
+  const sparkState = new Map();
 
-  const COL_IN  = '#5a6470';
-  const COL_OUT = '#727f8a';
-  const COL_NEW = '#6b8db5';
+  // sparkline geometry
+  const SPARK_W   = 200;
+  const SPARK_H   = 28;
+  const BAR_W     = 2;
+  const STRIDE    = 3;            // 2px bar + 1px gap
+  const MAX_BARS  = 60;
+  const ANIM_MS   = 150;
+  const FLOOR_SIZE = 200;
+  const PULSE_MS  = 400;
+  const MAX_QUEUE = 24;           // queued packets above this commit instantly
+
+  // colors resolved at boot from CSS custom properties
+  let COL_IN       = '#8a8a8a';
+  let COL_OUT      = '#4a4a4a';
+  let COL_NEW      = '#c19a5b';
+  let COL_BASELINE = 'rgba(255,255,255,0.05)';
+
+  function resolveColors() {
+    const cs = getComputedStyle(document.documentElement);
+    const v = (k, fb) => (cs.getPropertyValue(k) || '').trim() || fb;
+    COL_IN  = v('--bar-in',  COL_IN);
+    COL_OUT = v('--bar-out', COL_OUT);
+    COL_NEW = v('--accent',  COL_NEW);
+  }
 
   // ── ws connect with backoff ─────────────────────────────────
 
@@ -35,23 +100,23 @@
   function connectWs() {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     state.wsState = 'connecting';
-    setStatusDot();
+    setStatus();
     updateBanner();
     try {
       ws = new WebSocket(`${proto}://${location.host}/ws`);
-    } catch (err) {
+    } catch {
       scheduleReconnect();
       return;
     }
     ws.onopen = () => {
       state.wsState = 'ok';
       wsBackoff = 800;
-      setStatusDot();
+      setStatus();
       updateBanner();
     };
     ws.onclose = () => {
       state.wsState = 'closed';
-      setStatusDot();
+      setStatus();
       updateBanner();
       scheduleReconnect();
     };
@@ -72,18 +137,21 @@
     switch (msg.type) {
       case 'snapshot':
         state.config = msg.config;
-        state.stats = msg.stats || {};
+        state.stats  = msg.stats || {};
         for (const port in msg.recent || {}) {
-          const st = getSparkState(Number(port));
-          st.packets = (msg.recent[port] || []).slice(-60);
-          st.pendingShift = 0;
+          const st = ensureSparkState(Number(port));
+          // pre-fill committed bars so the row isn't empty at first paint
+          st.bars  = (msg.recent[port] || []).slice(-MAX_BARS);
+          st.queue = [];
+          st.current = null;
+          updateChartState(Number(port));
         }
         renderRows();
         for (const port in state.stats) updateRowStats(Number(port));
         if (currentRoute() === 'settings') renderSettings();
+        updateHeaderStats();
         updateFooter();
-        drawAllSparks();
-        refreshLiveState();
+        scheduleRaf();
         break;
 
       case 'config':
@@ -91,40 +159,71 @@
         renderRows();
         for (const port in state.stats) updateRowStats(Number(port));
         if (currentRoute() === 'settings') renderSettings();
+        updateHeaderStats();
         updateFooter();
-        drawAllSparks();
-        refreshLiveState();
+        scheduleRaf();
         break;
 
       case 'stats':
-        state.prevStats = state.stats;
         state.stats = msg.stats || {};
         for (const port in state.stats) updateRowStats(Number(port));
+        updateHeaderStats();
         break;
 
       case 'packets':
         for (const p of msg.batch || []) {
-          const st = getSparkState(p.port);
-          st.packets.push({ dir: p.dir, size: p.size, ts: p.ts });
-          if (st.packets.length > 60) st.packets.shift();
-          st.pendingShift = Math.min(st.pendingShift + 1, 6);
+          pushPacket(p.port, p);
         }
-        scheduleAnim();
+        scheduleRaf();
         break;
 
       case 'status':
-        state.captureOk = !!msg.captureOk;
+        state.captureOk  = !!msg.captureOk;
         state.captureMsg = msg.message || '';
-        setStatusDot();
+        setStatus();
         updateBanner();
+        updateHeaderStats();
+        updateFooter();
         break;
     }
   }
 
-  function getSparkState(port) {
+  function ensureSparkState(port) {
     let st = sparkState.get(port);
-    if (!st) { st = { packets: [], pendingShift: 0 }; sparkState.set(port, st); }
+    if (!st) {
+      st = {
+        bars: [],
+        queue: [],
+        current: null,
+        pulse: 0,
+        pulseLastTick: 0
+      };
+      sparkState.set(port, st);
+    }
     return st;
+  }
+
+  function pushPacket(port, p) {
+    const st = ensureSparkState(port);
+    // overflow control: if queue is too long, commit oldest queued
+    // packets straight into the bar buffer without animating them
+    while (st.queue.length >= MAX_QUEUE) {
+      const drop = st.queue.shift();
+      st.bars.push(drop);
+      if (st.bars.length > MAX_BARS) st.bars.shift();
+    }
+    st.queue.push({ dir: p.dir, size: p.size, ts: p.ts });
+    updateChartState(port);
+  }
+
+  function updateChartState(port) {
+    const row = document.querySelector(`.row[data-port="${port}"]`);
+    if (!row) return;
+    const cell = row.querySelector('.cell-chart');
+    if (!cell) return;
+    const st = sparkState.get(port);
+    const hasData = !!(st && (st.bars.length || st.queue.length || st.current));
+    cell.classList.toggle('has-data', hasData);
   }
 
   // ── routing ─────────────────────────────────────────────────
@@ -137,36 +236,45 @@
     const r = currentRoute();
     document.getElementById('view-dashboard').hidden = r !== 'dashboard';
     document.getElementById('view-settings').hidden  = r !== 'settings';
-    document.querySelectorAll('.nav-link').forEach((a) => {
+    document.querySelectorAll('.tab').forEach((a) => {
       a.classList.toggle('active', a.dataset.route === r);
     });
     if (r === 'settings') renderSettings();
+    else { scheduleRaf(); }
   }
 
   window.addEventListener('hashchange', applyRoute);
 
-  // ── header status ───────────────────────────────────────────
+  document.addEventListener('keydown', (e) => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    if (e.key === 'g')      location.hash = '#/';
+    else if (e.key === 's') location.hash = '#/settings';
+  });
 
-  function setStatusDot() {
-    const dot = document.getElementById('status-dot');
-    const txt = document.getElementById('status-text');
+  // ── status / banner / header / footer ───────────────────────
+
+  function setStatus() {
+    const root = document.getElementById('status');
+    const txt  = document.getElementById('status-text');
     if (state.wsState === 'closed') {
-      dot.dataset.state = 'error';
+      root.dataset.state = 'error';
       txt.textContent = 'disconnected';
       return;
     }
     if (state.wsState === 'connecting') {
-      dot.dataset.state = 'connecting';
+      root.dataset.state = 'connecting';
       txt.textContent = 'connecting';
       return;
     }
     if (!state.captureOk) {
-      dot.dataset.state = 'error';
-      txt.textContent = 'capture stopped';
+      root.dataset.state = 'error';
+      txt.textContent = 'capture down';
       return;
     }
-    dot.dataset.state = 'ok';
-    txt.textContent = state.captureMsg || 'capturing';
+    root.dataset.state = 'ok';
+    txt.textContent = 'capturing';
   }
 
   function updateBanner() {
@@ -174,31 +282,46 @@
     if (state.wsState === 'closed') {
       banner.hidden = false;
       banner.className = 'banner banner-warn';
-      banner.textContent = 'Connection to server lost · reconnecting…';
+      banner.textContent = 'connection lost — reconnecting…';
       return;
     }
-    if (state.wsState === 'connecting') {
-      banner.hidden = true;
-      return;
-    }
+    if (state.wsState === 'connecting') { banner.hidden = true; return; }
     if (!state.captureOk) {
       banner.hidden = false;
       banner.className = 'banner';
-      banner.textContent = 'Packet capture is not running — ' + (state.captureMsg || 'unknown error');
+      banner.textContent = 'packet capture is not running — ' + (state.captureMsg || 'unknown error');
       return;
     }
     banner.hidden = true;
   }
 
-  function updateFooter() {
-    const meta = document.getElementById('ftr-meta');
-    const n = state.config.ports.length;
-    const iface = (state.captureMsg || '').replace(/^capturing on /, '');
-    const ifacePart = state.captureOk && iface ? `${iface} · ` : '';
-    meta.textContent = `${ifacePart}${n} port${n === 1 ? '' : 's'} · dashboard :${state.config.dashboardPort}`;
+  function inferIface() {
+    const m = (state.captureMsg || '').match(/on\s+(\S+)/);
+    if (m) return m[1];
+    return (state.config && state.config.interface) || 'auto';
   }
 
-  // ── dashboard rows ──────────────────────────────────────────
+  function updateHeaderStats() {
+    document.getElementById('hs-iface').textContent = state.captureOk ? inferIface() : '—';
+    document.getElementById('hs-ports').textContent = String(state.config.ports.length);
+    let pps = 0;
+    for (const k in state.stats) pps += state.stats[k].reqPerSec || 0;
+    document.getElementById('hs-pps').textContent = formatRps(pps);
+    document.getElementById('hs-uptime').textContent = formatUptime(Date.now() - state.bootAt);
+  }
+
+  function updateFooter() {
+    const meta  = document.getElementById('ftr-meta');
+    const n     = state.config.ports.length;
+    const iface = state.captureOk ? inferIface() : 'no-capture';
+    meta.textContent = `conduit/0.1 · ${iface} · ${n} port${n === 1 ? '' : 's'} · :${state.config.dashboardPort}`;
+  }
+
+  setInterval(updateHeaderStats, 1000);
+
+  // ── row build / render ──────────────────────────────────────
+
+  const DASH = '<span class="dash">—</span>';
 
   function renderRows() {
     const rowsEl = document.getElementById('rows');
@@ -217,34 +340,97 @@
         el = buildRow(p);
         existing.set(p.port, el);
       } else {
-        el.querySelector('.port-name').textContent = p.name;
+        fillPortCell(el.querySelector('.cell-name'), p);
       }
       frag.appendChild(el);
     }
     rowsEl.appendChild(frag);
 
-    document.getElementById('empty').hidden = state.config.ports.length > 0;
+    if (state.config.ports.length === 0) {
+      document.getElementById('empty').hidden = false;
+      document.querySelector('.grid').style.display = 'none';
+    } else {
+      document.getElementById('empty').hidden = true;
+      document.querySelector('.grid').style.display = '';
+    }
     updateFooter();
   }
 
   function buildRow(p) {
     const el = document.createElement('div');
-    el.className = 'row is-idle';
+    el.className = 'row';
     el.dataset.port = String(p.port);
     el.innerHTML =
-      `<span class="dot"></span>` +
-      `<span class="port-chip">${escapeHtml(String(p.port))}</span>` +
-      `<span class="port-name"></span>` +
-      `<canvas class="spark" width="${SPARK_W}" height="${SPARK_H}"></canvas>` +
-      `<span class="num js-in"><span class="empty-val">—</span></span>` +
-      `<span class="num js-out"><span class="empty-val">—</span></span>` +
-      `<span class="num js-rps"><span class="empty-val">—</span></span>` +
-      `<span class="src js-src"><span class="empty-val">—</span></span>` +
-      `<span class="num js-total"><span class="empty-val">—</span></span>` +
-      `<span class="seen js-seen"><span class="empty-val">—</span></span>`;
-    el.querySelector('.port-name').textContent = p.name;
+      `<div class="cell cell-name"></div>` +
+      `<div class="cell cell-chart">` +
+        `<canvas class="spark" width="${SPARK_W}" height="${SPARK_H}"></canvas>` +
+        `<span class="chart-empty">no traffic</span>` +
+      `</div>` +
+      `<div class="cell cell-num js-in">${DASH}</div>` +
+      `<div class="cell cell-num js-out">${DASH}</div>` +
+      `<div class="cell cell-num js-rps">${DASH}</div>` +
+      `<div class="cell cell-mono js-src">${DASH}</div>` +
+      `<div class="cell cell-num js-total">${DASH}</div>` +
+      `<div class="cell cell-last js-last">${DASH}</div>`;
+    fillPortCell(el.querySelector('.cell-name'), p);
     initCanvas(el.querySelector('canvas'));
     return el;
+  }
+
+  function fillPortCell(cell, p) {
+    const auto = isAutoName(p.port, p.name);
+    const slug = auto ? PORT_ICONS[p.port] : null;
+    cell.innerHTML = '';
+
+    if (auto && slug) {
+      // logo + small :port
+      const iconWrap = document.createElement('span');
+      iconWrap.className = 'port-icon';
+      const img = document.createElement('img');
+      img.className = 'port-icon-img';
+      img.alt = slug;
+      img.width = 18;
+      img.height = 18;
+      img.loading = 'lazy';
+      // Simple Icons CDN: pass hex (no #) to colorize the SVG
+      img.src = `https://cdn.simpleicons.org/${slug}/8a8a8a`;
+      img.onerror = () => {
+        // fallback: replace icon with the port number, treat like no-slug case
+        iconWrap.remove();
+        const fb = document.createElement('div');
+        fb.className = 'port-num-only';
+        fb.textContent = ':' + p.port;
+        cell.prepend(fb);
+      };
+      iconWrap.appendChild(img);
+      cell.appendChild(iconWrap);
+
+      const portNum = document.createElement('div');
+      portNum.className = 'port-num';
+      portNum.textContent = ':' + p.port;
+      cell.appendChild(portNum);
+
+    } else if (auto && !slug) {
+      // no logo, no custom name — show port number on its own
+      const portMain = document.createElement('div');
+      portMain.className = 'port-num-only';
+      portMain.textContent = ':' + p.port;
+      cell.appendChild(portMain);
+
+    } else {
+      // custom name + small :port
+      const text = document.createElement('div');
+      text.className = 'port-text';
+      const name = document.createElement('div');
+      name.className = 'port-name';
+      name.textContent = p.name;
+      const portNum = document.createElement('div');
+      portNum.className = 'port-num';
+      portNum.textContent = ':' + p.port;
+      text.appendChild(name);
+      text.appendChild(portNum);
+      cell.appendChild(text);
+    }
   }
 
   function initCanvas(canvas) {
@@ -258,60 +444,104 @@
     ctx.imageSmoothingEnabled = false;
   }
 
+  // ── stat cell updates with flash & fade ─────────────────────
+
+  function setNumCell(el, newHtml, prev, curr) {
+    el.innerHTML = newHtml;
+    if (typeof prev === 'number' && typeof curr === 'number' && prev > 0 && curr !== prev) {
+      const cls = curr > prev ? 'flash-up' : 'flash-down';
+      el.classList.remove('flash-up', 'flash-down');
+      // force reflow so re-adding the class restarts the transition
+      void el.offsetWidth;
+      el.classList.add(cls);
+      clearTimeout(el.__flashT);
+      el.__flashT = setTimeout(() => el.classList.remove(cls), 120);
+    }
+  }
+
+  function setSrcCell(el, newSrc) {
+    const cur = el.dataset.src || '';
+    if (cur === (newSrc || '')) return;
+    if (cur) {
+      el.classList.add('fading');
+      clearTimeout(el.__srcT);
+      el.__srcT = setTimeout(() => {
+        el.innerHTML = newSrc ? escapeHtml(newSrc) : DASH;
+        el.classList.remove('fading');
+      }, 200);
+    } else {
+      el.innerHTML = newSrc ? escapeHtml(newSrc) : DASH;
+    }
+    el.dataset.src = newSrc || '';
+  }
+
   function updateRowStats(port) {
     const row = document.querySelector(`.row[data-port="${port}"]`);
     if (!row) return;
     const s = state.stats[port];
     if (!s) return;
-    const prev = (state.prevStats || {})[port] || {};
 
-    row.querySelector('.js-in').innerHTML  = renderNum(s.inAvg,  prev.inAvg);
-    row.querySelector('.js-out').innerHTML = renderNum(s.outAvg, prev.outAvg);
-    row.querySelector('.js-rps').innerHTML = s.reqPerSec > 0
-      ? formatRps(s.reqPerSec)
-      : '<span class="empty-val">—</span>';
-    row.querySelector('.js-src').innerHTML = s.topSource
-      ? escapeHtml(s.topSource)
-      : '<span class="empty-val">—</span>';
-    row.querySelector('.js-total').textContent = s.total > 0 ? formatInt(s.total) : '—';
-    row.querySelector('.js-seen').textContent  = s.lastSeen ? formatTime(s.lastSeen) : '—';
+    const inEl  = row.querySelector('.js-in');
+    const outEl = row.querySelector('.js-out');
+    const rpsEl = row.querySelector('.js-rps');
+    const totEl = row.querySelector('.js-total');
+    const lastEl= row.querySelector('.js-last');
+
+    const prevIn  = +(inEl.dataset.val  || 0);
+    const prevOut = +(outEl.dataset.val || 0);
+    const prevRps = +(rpsEl.dataset.val || 0);
+    const prevTot = +(totEl.dataset.val || 0);
+
+    const inHtml  = s.inAvg  > 0 ? formatInt(Math.round(s.inAvg))  : DASH;
+    const outHtml = s.outAvg > 0 ? formatInt(Math.round(s.outAvg)) : DASH;
+    const rpsHtml = s.reqPerSec > 0 ? formatRps(s.reqPerSec)       : DASH;
+    const totHtml = s.total  > 0 ? formatInt(s.total)              : DASH;
+
+    setNumCell(inEl,  inHtml,  prevIn,  s.inAvg  || 0);
+    setNumCell(outEl, outHtml, prevOut, s.outAvg || 0);
+    setNumCell(rpsEl, rpsHtml, prevRps, s.reqPerSec || 0);
+    setNumCell(totEl, totHtml, prevTot, s.total || 0);
+
+    inEl.dataset.val  = String(s.inAvg  || 0);
+    outEl.dataset.val = String(s.outAvg || 0);
+    rpsEl.dataset.val = String(s.reqPerSec || 0);
+    totEl.dataset.val = String(s.total || 0);
+
+    lastEl.innerHTML = s.lastSeen ? formatTime(s.lastSeen) : DASH;
+
+    setSrcCell(row.querySelector('.js-src'), s.topSource || '');
   }
 
   // ── formatting ──────────────────────────────────────────────
 
-  function renderNum(curr, prev) {
-    if (!curr || curr <= 0) return '<span class="empty-val">—</span>';
-    const valHtml = formatInt(Math.round(curr));
-    if (typeof prev === 'number' && prev > 0) {
-      const diff = curr - prev;
-      const rel = Math.abs(diff) / Math.max(prev, 1);
-      if (rel >= 0.05) {
-        const pct = (diff / prev) * 100;
-        const cls = pct > 0 ? 'delta-up' : 'delta-down';
-        const arrow = pct > 0 ? '▲' : '▼';
-        const pctStr = Math.abs(pct).toFixed(pct >= 100 ? 0 : 1);
-        return `<span class="delta ${cls}">${arrow}${pctStr}</span>${valHtml}`;
-      }
-    }
-    return valHtml;
-  }
-
   function formatRps(v) {
-    if (v >= 100) return Math.round(v).toString();
-    if (v >= 10)  return v.toFixed(1);
+    if (v <= 0) return '0';
+    if (v >= 1000) return (v / 1000).toFixed(1) + 'k';
+    if (v >= 100)  return Math.round(v).toString();
+    if (v >= 10)   return v.toFixed(1);
     return v.toFixed(2);
   }
 
   function formatInt(n) {
     if (n < 1000) return String(n);
-    // narrow no-break space as thousands separator — terminal-y look
-    return n.toLocaleString('en-US').replace(/,/g, ' ');
+    // narrow-ish thousands separator — terminal-y look
+    return n.toLocaleString('en-US').replace(/,/g, ' ');
   }
 
   function formatTime(ts) {
     const d = new Date(ts);
     const pad = (x) => String(x).padStart(2, '0');
     return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  }
+
+  function formatUptime(ms) {
+    const s = Math.floor(ms / 1000);
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const r = s % 60;
+    if (h > 0) return `${h}h${String(m).padStart(2, '0')}m`;
+    if (m > 0) return `${m}m${String(r).padStart(2, '0')}s`;
+    return `${r}s`;
   }
 
   function escapeHtml(s) {
@@ -323,97 +553,120 @@
       .replace(/'/g, '&#39;');
   }
 
-  // ── canvas sparkline render loop ────────────────────────────
+  // ── sparkline render ────────────────────────────────────────
+
+  function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 
   function drawSpark(canvas, st) {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, SPARK_W, SPARK_H);
-    const pkts = st.packets;
-    if (!pkts.length) return;
 
+    // always-visible baseline
+    ctx.fillStyle = COL_BASELINE;
+    ctx.fillRect(0, SPARK_H - 1, SPARK_W, 1);
+
+    const bars = st.bars;
+    const N = bars.length;
+    if (!N && !st.current) return;
+
+    // normalize across committed bars + the bar currently animating in
     let maxSize = FLOOR_SIZE;
-    for (let i = 0; i < pkts.length; i++) {
-      if (pkts[i].size > maxSize) maxSize = pkts[i].size;
-    }
+    for (let i = 0; i < N; i++) if (bars[i].size > maxSize) maxSize = bars[i].size;
+    if (st.current && st.current.packet.size > maxSize) maxSize = st.current.packet.size;
+    const maxH = SPARK_H - 3;
 
-    const offset = st.pendingShift * BAR_STRIDE;
-    const start = Math.max(0, pkts.length - MAX_BARS - 1);
-    const sub = pkts.slice(start);
-    const n = sub.length;
+    // existing bars: slide left during animation
+    let slide = 0;
+    if (st.current) slide = -STRIDE * easeOutCubic(st.current.t);
 
-    for (let i = 0; i < n; i++) {
-      const p = sub[i];
-      const xFinal = (i - (n - 1)) * BAR_STRIDE + (SPARK_W - BAR_W);
-      const x = Math.round(xFinal + offset);
+    for (let i = 0; i < N; i++) {
+      const b = bars[i];
+      // newest committed bar (i = N - 1) sits at the right edge;
+      // older bars step left by STRIDE each
+      const xBase = (SPARK_W - BAR_W) - (N - 1 - i) * STRIDE;
+      const x = Math.round(xBase + slide);
       if (x + BAR_W < 0 || x > SPARK_W) continue;
-      const ratio = Math.min(1, p.size / maxSize);
-      const barH = Math.max(1, Math.round(ratio * (SPARK_H - 2)));
-      const y = SPARK_H - barH;
-      const isNewest = (i === n - 1 && st.pendingShift < 0.4);
-      ctx.fillStyle = isNewest ? COL_NEW : (p.dir === 'in' ? COL_IN : COL_OUT);
-      ctx.fillRect(x, y, BAR_W, barH);
+      const ratio = Math.min(1, b.size / maxSize);
+      const h = Math.max(1, Math.round(maxH * ratio));
+      const y = SPARK_H - 1 - h;
+      ctx.fillStyle = b.dir === 'in' ? COL_IN : COL_OUT;
+      ctx.fillRect(x, y, BAR_W, h);
+    }
+
+    // newly animating bar — pinned to the right edge, height grows
+    if (st.current) {
+      const eased = easeOutCubic(st.current.t);
+      const ratio = Math.min(1, st.current.packet.size / maxSize);
+      const fullH = Math.max(1, Math.round(maxH * ratio));
+      const h = Math.max(1, Math.round(fullH * eased));
+      ctx.fillStyle = COL_NEW;
+      ctx.fillRect(SPARK_W - BAR_W, SPARK_H - 1 - h, BAR_W, h);
     }
   }
 
-  let lastTickTime = 0;
-  let animFrame = 0;
+  // ── master animation loop (rAF) ─────────────────────────────
 
-  function scheduleAnim() {
-    if (animFrame || document.hidden) return;
-    animFrame = requestAnimationFrame(animTick);
+  let rafId = 0;
+  let lastTickAt = 0;
+
+  function scheduleRaf() {
+    if (rafId || document.hidden) return;
+    rafId = requestAnimationFrame(rafTick);
   }
 
-  function animTick(now) {
-    animFrame = 0;
-    const dt = lastTickTime ? now - lastTickTime : 0;
-    lastTickTime = now;
-    const decay = dt / ANIM_MS;
+  function rafTick(now) {
+    rafId = 0;
+    const dt = lastTickAt ? now - lastTickAt : 0;
+    lastTickAt = now;
 
-    let stillAnimating = false;
+    let stillActive = false;
+
     for (const [port, st] of sparkState) {
-      if (st.pendingShift > 0) {
-        st.pendingShift = Math.max(0, st.pendingShift - decay);
-        if (st.pendingShift > 0) stillAnimating = true;
+      const row = document.querySelector(`.row[data-port="${port}"]`);
+      const canvas = row ? row.querySelector('.spark') : null;
+
+      // advance current animation
+      if (st.current) {
+        const t = Math.min(1, (now - st.current.startTime) / st.current.animMs);
+        st.current.t = t;
+        if (t >= 1) {
+          // commit packet to bars
+          st.bars.push(st.current.packet);
+          if (st.bars.length > MAX_BARS) st.bars.shift();
+          st.current = null;
+        }
       }
-      const row = document.querySelector(`.row[data-port="${port}"]`);
-      if (!row) continue;
-      const canvas = row.querySelector('.spark');
+
+      // start next from queue if no current animation in flight
+      if (!st.current && st.queue.length > 0) {
+        const packet = st.queue.shift();
+        // shorten animation when queue is backed up so we don't fall behind
+        const animMs = st.queue.length > 0
+          ? Math.max(40, ANIM_MS / Math.max(1, 0.5 + st.queue.length * 0.7))
+          : ANIM_MS;
+        st.current = { packet, startTime: now, animMs, t: 0 };
+        // start a row-indicator pulse for this packet
+        st.pulse = 1;
+      }
+
+      // decay pulse
+      if (st.pulse > 0) {
+        st.pulse = Math.max(0, st.pulse - dt / PULSE_MS);
+        if (row) row.style.setProperty('--pulse', st.pulse.toFixed(3));
+      }
+
+      // redraw
       if (canvas) drawSpark(canvas, st);
+
+      if (st.current || st.queue.length > 0 || st.pulse > 0) stillActive = true;
     }
 
-    if (stillAnimating) scheduleAnim();
-    else lastTickTime = 0;
+    if (stillActive) rafId = requestAnimationFrame(rafTick);
+    else             lastTickAt = 0;
   }
-
-  function refreshLiveState() {
-    const liveNow = Date.now();
-    for (const [port] of sparkState) {
-      const row = document.querySelector(`.row[data-port="${port}"]`);
-      if (!row) continue;
-      const s = state.stats[port];
-      const ls = s ? s.lastSeen : 0;
-      const sinceLast = liveNow - ls;
-      row.classList.toggle('is-live', !!ls && sinceLast < 1500);
-      row.classList.toggle('is-idle', !ls || sinceLast > 10000);
-    }
-  }
-
-  function drawAllSparks() {
-    for (const [port, st] of sparkState) {
-      const row = document.querySelector(`.row[data-port="${port}"]`);
-      if (!row) continue;
-      const canvas = row.querySelector('.spark');
-      if (canvas) drawSpark(canvas, st);
-    }
-  }
-
-  setInterval(refreshLiveState, 300);
 
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) {
-      drawAllSparks();
-      scheduleAnim();
-    }
+    if (!document.hidden) scheduleRaf();
   });
 
   // ── settings page ───────────────────────────────────────────
@@ -422,23 +675,26 @@
     const list = document.getElementById('setlist');
     list.innerHTML = '';
 
+    const countEl = document.getElementById('ports-count');
+    if (countEl) countEl.textContent = String(state.config.ports.length);
+
     if (!state.config.ports.length) {
       const empty = document.createElement('div');
-      empty.className = 'empty';
-      empty.style.padding = '20px 14px';
-      empty.innerHTML = '<span>No ports yet — add one below.</span>';
+      empty.className = 'set-empty';
+      empty.textContent = 'no ports configured yet — add one below';
       list.appendChild(empty);
     }
 
     state.config.ports.forEach((p, i) => {
+      const auto = isAutoName(p.port, p.name);
       const row = document.createElement('div');
       row.className = 'setrow';
       row.innerHTML =
         `<span class="port-chip">${escapeHtml(String(p.port))}</span>` +
-        `<input type="text" class="js-name" value="${escapeHtml(p.name)}" maxlength="40" />` +
+        `<input type="text" class="js-name" value="${auto ? '' : escapeHtml(p.name)}" placeholder="auto" maxlength="40" />` +
         `<span class="move">` +
-          `<button class="icon-btn js-up"   ${i === 0 ? 'disabled' : ''} title="move up">▲</button>` +
-          `<button class="icon-btn js-down" ${i === state.config.ports.length - 1 ? 'disabled' : ''} title="move down">▼</button>` +
+          `<button class="icon-btn js-up"   ${i === 0 ? 'disabled' : ''} title="move up">↑</button>` +
+          `<button class="icon-btn js-down" ${i === state.config.ports.length - 1 ? 'disabled' : ''} title="move down">↓</button>` +
         `</span>` +
         `<button class="icon-btn danger js-rm" title="remove">×</button>`;
       row.querySelector('.js-up').onclick   = () => move(i, -1);
@@ -469,10 +725,8 @@
   }
 
   function renameAt(i, name) {
-    const trimmed = (name || '').trim();
-    if (!trimmed) return;
     const arr = state.config.ports.slice();
-    arr[i] = { ...arr[i], name: trimmed };
+    arr[i] = { ...arr[i], name: (name || '').trim() };
     putConfig({ ports: arr });
   }
 
@@ -489,6 +743,7 @@
         state.config = body;
         renderRows();
         if (currentRoute() === 'settings') renderSettings();
+        updateHeaderStats();
         return body;
       });
   }
@@ -509,14 +764,13 @@
     if (!Number.isInteger(port) || port < 1 || port > 65535) {
       setSaveHint('invalid port', 'fail'); return;
     }
-    if (!name) { setSaveHint('name required', 'fail'); return; }
     if (state.config.ports.some((p) => p.port === port)) {
       setSaveHint(`port ${port} already monitored`, 'fail'); return;
     }
     const arr = state.config.ports.slice();
     arr.push({ port, name });
     putConfig({ ports: arr })
-      .then(() => { portInput.value = ''; nameInput.value = ''; portInput.focus(); setSaveHint(`added ${name}`, 'ok'); })
+      .then(() => { portInput.value = ''; nameInput.value = ''; portInput.focus(); setSaveHint(`added :${port}`, 'ok'); })
       .catch((err) => setSaveHint(err.message, 'fail'));
   });
 
@@ -527,12 +781,23 @@
       setSaveHint('invalid dashboard port', 'fail'); return;
     }
     putConfig({ dashboardPort: dp, interface: iface || null })
-      .then(() => setSaveHint('saved · restart for listener changes', 'ok'))
+      .then(() => setSaveHint('saved — restart for listener changes', 'ok'))
       .catch((err) => setSaveHint(err.message, 'fail'));
   });
 
   // ── boot ────────────────────────────────────────────────────
 
+  requestAnimationFrame(() => {
+    resolveColors();
+    // initial paint for any rows that exist but have no spark state yet
+    document.querySelectorAll('.row .spark').forEach((c) => {
+      const port = Number(c.closest('.row').dataset.port);
+      drawSpark(c, ensureSparkState(port));
+    });
+  });
+
   applyRoute();
+  updateHeaderStats();
+  updateFooter();
   connectWs();
 })();
