@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "conduit",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["server.js"],
+      "port": 4200
+    }
+  ]
+}

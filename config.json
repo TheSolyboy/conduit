@@ -1,0 +1,9 @@
+{
+  "dashboardPort": 4200,
+  "interface": null,
+  "ports": [
+    { "port": 22, "name": "SSH" },
+    { "port": 80, "name": "HTTP" },
+    { "port": 443, "name": "HTTPS" }
+  ]
+}
