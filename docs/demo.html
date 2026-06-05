@@ -34,7 +34,7 @@
     --row-h:     40px;
     --hdr-h:     48px;
     --gh-h:      28px;
-    --grid-cols: minmax(150px, 1.1fr) 200px 70px 70px 60px 130px 80px 70px;
+    --grid-cols: 200px minmax(240px, 1fr) 72px 72px 62px 140px 84px 72px;
   }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
@@ -87,8 +87,8 @@
   .port-name { font-size: 12.5px; font-weight: 500; color: var(--ink); letter-spacing: -0.005em; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .port-num { font-size: 10px; font-weight: 400; color: var(--ink-3); }
 
-  .cell-chart { position: relative; justify-content: flex-start; height: 28px; align-self: center; }
-  .spark { display: block; }
+  .cell-chart { position: relative; justify-content: flex-start; height: 28px; align-self: center; width: 100%; min-width: 0; }
+  .spark { display: block; width: 100%; max-width: 100%; }
 
   .cell-num { justify-content: flex-end; font-size: 12px; font-weight: 500; color: var(--ink); white-space: nowrap; gap: 5px; transition: color 200ms ease; }
   .cell-num .dash { color: var(--ink-4); font-weight: 400; }
@@ -248,8 +248,27 @@
     const COL_BASE = 'rgba(255,255,255,0.05)';
 
     // ── sparkline geometry (matches the real app) ──
-    const SPARK_W = 200, SPARK_H = 28, BAR_W = 2, STRIDE = 3, MAX_BARS = 60;
+    // canvas width is dynamic (fills the flexible chart column); bar
+    // stride/width derive per-canvas so 60 bars always span the width.
+    const SPARK_H = 28, MAX_BARS = 60, SPARK_W_MIN = 120, SPARK_W_INIT = 200;
     const ANIM_MS = 150, FLOOR_SIZE = 200, PULSE_MS = 400, MAX_QUEUE = 24;
+    const sparkGeom = (w) => { const stride = w / MAX_BARS; const barW = Math.max(2, Math.min(5, Math.round(stride * 0.6))); return { stride, barW }; };
+
+    // size a row canvas to its chart column's current width
+    function sizeCanvas(canvas) {
+      const cell = canvas.parentElement;
+      const w = Math.max(SPARK_W_MIN, Math.floor(cell ? cell.clientWidth : SPARK_W_INIT));
+      const dpr = window.devicePixelRatio || 1;
+      if (canvas.__w !== w) {
+        canvas.__w = w;
+        canvas.width = w * dpr; canvas.height = SPARK_H * dpr;
+        canvas.style.width = w + 'px'; canvas.style.height = SPARK_H + 'px';
+      }
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.imageSmoothingEnabled = false;
+    }
+    function sizeAllCanvases() { document.querySelectorAll('.row .spark').forEach(sizeCanvas); }
 
     const fmtInt = (n) => { n = Math.round(n); return n < 1000 ? String(n) : n.toLocaleString('en-US').replace(/,/g, ' '); };
     const fmtRps = (x) => x <= 0 ? '0' : x >= 1000 ? (x/1000).toFixed(1)+'k' : x >= 100 ? Math.round(x).toString() : x >= 10 ? x.toFixed(1) : x.toFixed(2);
@@ -288,7 +307,7 @@
 
       el.innerHTML =
         nameHtml +
-        `<div class="cell cell-chart"><canvas class="spark" width="${SPARK_W}" height="${SPARK_H}"></canvas></div>` +
+        `<div class="cell cell-chart"><canvas class="spark" width="${SPARK_W_INIT}" height="${SPARK_H}"></canvas></div>` +
         `<div class="cell cell-num js-in"><span class="dash">—</span></div>` +
         `<div class="cell cell-num js-out"><span class="dash">—</span></div>` +
         `<div class="cell cell-num js-rps"><span class="dash">—</span></div>` +
@@ -297,14 +316,9 @@
         `<div class="cell cell-last js-last"><span class="dash">—</span></div>`;
       rowsEl.appendChild(el);
 
-      // canvas dpr
+      // size canvas to its (now laid-out) chart column
       const canvas = el.querySelector('canvas');
-      const dpr = window.devicePixelRatio || 1;
-      canvas.width = SPARK_W * dpr; canvas.height = SPARK_H * dpr;
-      canvas.style.width = SPARK_W + 'px'; canvas.style.height = SPARK_H + 'px';
-      const ctx = canvas.getContext('2d');
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.imageSmoothingEnabled = false;
+      sizeCanvas(canvas);
 
       rowEls.set(p.port, {
         cfg: p, el, canvas,
@@ -450,9 +464,11 @@
 
     // ── sparkline draw ──
     function drawSpark(canvas, st) {
+      const W = canvas.__w || SPARK_W_MIN;
+      const { stride: STRIDE, barW: BAR_W } = sparkGeom(W);
       const ctx = canvas.getContext('2d');
-      ctx.clearRect(0, 0, SPARK_W, SPARK_H);
-      ctx.fillStyle = COL_BASE; ctx.fillRect(0, SPARK_H - 1, SPARK_W, 1);
+      ctx.clearRect(0, 0, W, SPARK_H);
+      ctx.fillStyle = COL_BASE; ctx.fillRect(0, SPARK_H - 1, W, 1);
       const bars = st.bars, N = bars.length;
       if (!N && !st.current) return;
       let maxSize = FLOOR_SIZE;
@@ -462,9 +478,9 @@
       let slide = st.current ? -STRIDE * easeOut(st.current.t) : 0;
       for (let i = 0; i < N; i++) {
         const b = bars[i];
-        const xBase = (SPARK_W - BAR_W) - (N - 1 - i) * STRIDE;
+        const xBase = (W - BAR_W) - (N - 1 - i) * STRIDE;
         const x = Math.round(xBase + slide);
-        if (x + BAR_W < 0 || x > SPARK_W) continue;
+        if (x + BAR_W < 0 || x > W) continue;
         const ratio = Math.min(1, b.size / maxSize);
         const h = Math.max(1, Math.round(maxH * ratio));
         ctx.fillStyle = b.dir === 'in' ? COL_IN : COL_OUT;
@@ -476,7 +492,7 @@
         const fullH = Math.max(1, Math.round(maxH * ratio));
         const h = Math.max(1, Math.round(fullH * e));
         ctx.fillStyle = COL_NEW;
-        ctx.fillRect(SPARK_W - BAR_W, SPARK_H - 1 - h, BAR_W, h);
+        ctx.fillRect(W - BAR_W, SPARK_H - 1 - h, BAR_W, h);
       }
     }
 
@@ -562,6 +578,15 @@
 
     // pre-seed a little aggregate history so the chart isn't empty at t=0
     for (let i = 0; i < 80; i++) aggHistory.push(120 + Math.sin(i*0.2)*40 + Math.random()*20);
+
+    // re-size sparklines to fill the chart column once layout has settled,
+    // and again on window resize
+    requestAnimationFrame(sizeAllCanvases);
+    let resizeT = 0;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeT);
+      resizeT = setTimeout(() => { sizeAllCanvases(); drawAgg(); }, 120);
+    });
 
     setInterval(emitTick, EMIT_MS);
     setInterval(statsTick, TICK_MS);

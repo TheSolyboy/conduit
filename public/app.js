@@ -68,15 +68,25 @@
   const sparkState = new Map();
 
   // sparkline geometry
-  const SPARK_W   = 200;
-  const SPARK_H   = 28;
-  const BAR_W     = 2;
-  const STRIDE    = 3;            // 2px bar + 1px gap
-  const MAX_BARS  = 60;
-  const ANIM_MS   = 150;
+  // The canvas width is dynamic — it fills the (flexible) chart column.
+  // Bar stride/width are derived per-canvas from its measured width so the
+  // 60 bars always span the full width.
+  const SPARK_H    = 28;
+  const SPARK_W_MIN = 120;        // never render narrower than this
+  const SPARK_W_INIT = 200;       // initial attr before first layout measure
+  const MAX_BARS   = 60;
+  const ANIM_MS    = 150;
   const FLOOR_SIZE = 200;
-  const PULSE_MS  = 400;
-  const MAX_QUEUE = 24;           // queued packets above this commit instantly
+  const PULSE_MS   = 400;
+  const MAX_QUEUE  = 24;           // queued packets above this commit instantly
+
+  // bar stride + width for a given canvas width: 60 bars fill the space,
+  // bars thicken modestly as the column gets wider (2 → 5px)
+  function sparkGeom(w) {
+    const stride = w / MAX_BARS;
+    const barW = Math.max(2, Math.min(5, Math.round(stride * 0.6)));
+    return { stride, barW };
+  }
 
   // colors resolved at boot from CSS custom properties
   let COL_IN       = '#7466c4';
@@ -361,6 +371,9 @@
       document.getElementById('empty').hidden = true;
       document.querySelector('.grid').style.display = '';
     }
+    // now that rows are in the DOM, size each canvas to its column and paint
+    sizeAllCanvases();
+    redrawAllSparks();
     updateFooter();
   }
 
@@ -371,7 +384,7 @@
     el.innerHTML =
       `<div class="cell cell-name"></div>` +
       `<div class="cell cell-chart">` +
-        `<canvas class="spark" width="${SPARK_W}" height="${SPARK_H}"></canvas>` +
+        `<canvas class="spark" width="${SPARK_W_INIT}" height="${SPARK_H}"></canvas>` +
         `<span class="chart-empty">no traffic</span>` +
       `</div>` +
       `<div class="cell cell-num js-in">${DASH}</div>` +
@@ -381,7 +394,7 @@
       `<div class="cell cell-num js-total">${DASH}</div>` +
       `<div class="cell cell-last js-last">${DASH}</div>`;
     fillPortCell(el.querySelector('.cell-name'), p);
-    initCanvas(el.querySelector('canvas'));
+    sizeCanvas(el.querySelector('canvas'));
     return el;
   }
 
@@ -449,15 +462,37 @@
     }
   }
 
-  function initCanvas(canvas) {
+  // size a canvas to its chart cell's current width (and devicePixelRatio).
+  // returns true if the backing pixel size changed.
+  function sizeCanvas(canvas) {
+    const cell = canvas.parentElement;
+    const w = Math.max(SPARK_W_MIN, Math.floor(cell ? cell.clientWidth : SPARK_W_INIT));
     const dpr = window.devicePixelRatio || 1;
-    canvas.width  = SPARK_W * dpr;
-    canvas.height = SPARK_H * dpr;
-    canvas.style.width  = SPARK_W + 'px';
-    canvas.style.height = SPARK_H + 'px';
+    let changed = false;
+    if (canvas.__w !== w) {
+      canvas.__w = w;
+      canvas.width  = w * dpr;
+      canvas.height = SPARK_H * dpr;
+      canvas.style.width  = w + 'px';
+      canvas.style.height = SPARK_H + 'px';
+      changed = true;
+    }
     const ctx = canvas.getContext('2d');
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.imageSmoothingEnabled = false;
+    return changed;
+  }
+
+  function sizeAllCanvases() {
+    document.querySelectorAll('.row .spark').forEach((c) => sizeCanvas(c));
+  }
+
+  function redrawAllSparks() {
+    document.querySelectorAll('.row .spark').forEach((c) => {
+      const row = c.closest('.row');
+      if (!row) return;
+      drawSpark(c, ensureSparkState(Number(row.dataset.port)));
+    });
   }
 
   // ── stat cell updates with flash & fade ─────────────────────
@@ -574,12 +609,14 @@
   function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 
   function drawSpark(canvas, st) {
+    const W = canvas.__w || SPARK_W_MIN;
+    const { stride: STRIDE, barW: BAR_W } = sparkGeom(W);
     const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, SPARK_W, SPARK_H);
+    ctx.clearRect(0, 0, W, SPARK_H);
 
     // always-visible baseline
     ctx.fillStyle = COL_BASELINE;
-    ctx.fillRect(0, SPARK_H - 1, SPARK_W, 1);
+    ctx.fillRect(0, SPARK_H - 1, W, 1);
 
     const bars = st.bars;
     const N = bars.length;
@@ -599,9 +636,9 @@
       const b = bars[i];
       // newest committed bar (i = N - 1) sits at the right edge;
       // older bars step left by STRIDE each
-      const xBase = (SPARK_W - BAR_W) - (N - 1 - i) * STRIDE;
+      const xBase = (W - BAR_W) - (N - 1 - i) * STRIDE;
       const x = Math.round(xBase + slide);
-      if (x + BAR_W < 0 || x > SPARK_W) continue;
+      if (x + BAR_W < 0 || x > W) continue;
       const ratio = Math.min(1, b.size / maxSize);
       const h = Math.max(1, Math.round(maxH * ratio));
       const y = SPARK_H - 1 - h;
@@ -616,7 +653,7 @@
       const fullH = Math.max(1, Math.round(maxH * ratio));
       const h = Math.max(1, Math.round(fullH * eased));
       ctx.fillStyle = COL_NEW;
-      ctx.fillRect(SPARK_W - BAR_W, SPARK_H - 1 - h, BAR_W, h);
+      ctx.fillRect(W - BAR_W, SPARK_H - 1 - h, BAR_W, h);
     }
   }
 
@@ -817,11 +854,16 @@
     return `rgba(${r},${g},${b},${alpha})`;
   }
 
-  // redraw on window resize so the agg-spark fills its column at the new width
-  let aggResizeT = 0;
+  // redraw on window resize so the sparklines + agg-spark refill their
+  // columns at the new width
+  let resizeT = 0;
   window.addEventListener('resize', () => {
-    clearTimeout(aggResizeT);
-    aggResizeT = setTimeout(() => drawAggSpark(), 150);
+    clearTimeout(resizeT);
+    resizeT = setTimeout(() => {
+      sizeAllCanvases();
+      redrawAllSparks();
+      drawAggSpark();
+    }, 120);
   });
 
   // ── settings page ───────────────────────────────────────────
@@ -957,11 +999,9 @@
 
   requestAnimationFrame(() => {
     resolveColors();
-    // initial paint for any rows that exist but have no spark state yet
-    document.querySelectorAll('.row .spark').forEach((c) => {
-      const port = Number(c.closest('.row').dataset.port);
-      drawSpark(c, ensureSparkState(port));
-    });
+    // size canvases to their columns, then paint
+    sizeAllCanvases();
+    redrawAllSparks();
   });
 
   applyRoute();

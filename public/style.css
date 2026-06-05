@@ -38,7 +38,9 @@
   --row-h:     40px;
   --hdr-h:     48px;
   --gh-h:      28px;
-  --grid-cols: minmax(150px, 1.1fr) 200px 70px 70px 60px 130px 80px 70px;
+  /* port is fixed; traffic flexes to fill the row so the sparkline
+     uses all available width */
+  --grid-cols: 200px minmax(240px, 1fr) 72px 72px 62px 140px 84px 72px;
 }
 
 * { box-sizing: border-box; }
@@ -320,9 +322,13 @@ html, body {
   justify-content: flex-start;
   height: 28px;
   align-self: center;
+  width: 100%;
+  min-width: 0;
 }
 .spark {
   display: block;
+  width: 100%;
+  max-width: 100%;
 }
 .chart-empty {
   position: absolute;
