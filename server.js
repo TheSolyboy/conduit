@@ -21,7 +21,8 @@ const DEFAULT_CONFIG = {
   ports: []
 };
 
-const RECENT_PACKETS = 60;
+const RECENT_PACKETS = 240;   // ring of recent packets sent in the snapshot;
+                              // enough to fill a wide sparkline on first load
 const IN_OUT_WINDOW = 30;
 const REQ_PER_SEC_WINDOW_MS = 5000;
 const TOP_SOURCE_WINDOW_MS = 30000;

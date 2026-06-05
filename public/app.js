@@ -74,18 +74,16 @@
   const SPARK_H    = 28;
   const SPARK_W_MIN = 120;        // never render narrower than this
   const SPARK_W_INIT = 200;       // initial attr before first layout measure
-  const MAX_BARS   = 60;
+  const BAR_STRIDE = 3;           // 2px bar + 1px gap — fixed, tight ticker look
+  const BAR_W      = 2;
+  const MAX_BARS   = 240;         // buffer cap; enough thin bars to fill a wide column
   const ANIM_MS    = 150;
   const FLOOR_SIZE = 200;
   const PULSE_MS   = 400;
   const MAX_QUEUE  = 24;           // queued packets above this commit instantly
 
-  // bar stride + width for a given canvas width: 60 bars spread to fill the
-  // space, but the bars stay thin (2px) — the gap grows, not the bar
-  function sparkGeom(w) {
-    const stride = w / MAX_BARS;
-    return { stride, barW: 2 };
-  }
+  // thin tight bars at a fixed stride; the canvas just shows however many
+  // fit its width (drawn from the right), so a wider column shows more bars.
 
   // colors resolved at boot from CSS custom properties
   let COL_IN       = '#7466c4';
@@ -609,7 +607,7 @@
 
   function drawSpark(canvas, st) {
     const W = canvas.__w || SPARK_W_MIN;
-    const { stride: STRIDE, barW: BAR_W } = sparkGeom(W);
+    const STRIDE = BAR_STRIDE;
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, W, SPARK_H);
 
@@ -621,9 +619,13 @@
     const N = bars.length;
     if (!N && !st.current) return;
 
-    // normalize across committed bars + the bar currently animating in
+    // only the rightmost bars are visible — iterate just those (+slack)
+    const visible = Math.ceil(W / STRIDE) + 2;
+    const start = Math.max(0, N - visible);
+
+    // normalize across the visible bars + the bar currently animating in
     let maxSize = FLOOR_SIZE;
-    for (let i = 0; i < N; i++) if (bars[i].size > maxSize) maxSize = bars[i].size;
+    for (let i = start; i < N; i++) if (bars[i].size > maxSize) maxSize = bars[i].size;
     if (st.current && st.current.packet.size > maxSize) maxSize = st.current.packet.size;
     const maxH = SPARK_H - 3;
 
@@ -631,7 +633,7 @@
     let slide = 0;
     if (st.current) slide = -STRIDE * easeOutCubic(st.current.t);
 
-    for (let i = 0; i < N; i++) {
+    for (let i = start; i < N; i++) {
       const b = bars[i];
       // newest committed bar (i = N - 1) sits at the right edge;
       // older bars step left by STRIDE each

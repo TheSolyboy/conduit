@@ -159,7 +159,7 @@
       <div class="grid">
         <div class="grid-head">
           <div class="gh gh-name">port</div>
-          <div class="gh gh-chart">traffic <span class="gh-sub">last 60</span></div>
+          <div class="gh gh-chart">traffic <span class="gh-sub">live</span></div>
           <div class="gh gh-in">in <span class="gh-sub">avg30</span></div>
           <div class="gh gh-out">out <span class="gh-sub">avg30</span></div>
           <div class="gh gh-rps">req/s</div>
@@ -248,11 +248,11 @@
     const COL_BASE = 'rgba(255,255,255,0.05)';
 
     // ── sparkline geometry (matches the real app) ──
-    // canvas width is dynamic (fills the flexible chart column); bar
-    // stride/width derive per-canvas so 60 bars always span the width.
-    const SPARK_H = 28, MAX_BARS = 60, SPARK_W_MIN = 120, SPARK_W_INIT = 200;
+    // canvas width is dynamic (fills the flexible chart column); thin tight
+    // bars at a fixed stride — a wider column simply shows more of them.
+    const SPARK_H = 28, MAX_BARS = 240, SPARK_W_MIN = 120, SPARK_W_INIT = 200;
+    const BAR_STRIDE = 3, BAR_W = 2;
     const ANIM_MS = 150, FLOOR_SIZE = 200, PULSE_MS = 400, MAX_QUEUE = 24;
-    const sparkGeom = (w) => ({ stride: w / MAX_BARS, barW: 2 });
 
     // size a row canvas to its chart column's current width
     function sizeCanvas(canvas) {
@@ -465,18 +465,20 @@
     // ── sparkline draw ──
     function drawSpark(canvas, st) {
       const W = canvas.__w || SPARK_W_MIN;
-      const { stride: STRIDE, barW: BAR_W } = sparkGeom(W);
+      const STRIDE = BAR_STRIDE;
       const ctx = canvas.getContext('2d');
       ctx.clearRect(0, 0, W, SPARK_H);
       ctx.fillStyle = COL_BASE; ctx.fillRect(0, SPARK_H - 1, W, 1);
       const bars = st.bars, N = bars.length;
       if (!N && !st.current) return;
+      const visible = Math.ceil(W / STRIDE) + 2;
+      const start = Math.max(0, N - visible);
       let maxSize = FLOOR_SIZE;
-      for (let i = 0; i < N; i++) if (bars[i].size > maxSize) maxSize = bars[i].size;
+      for (let i = start; i < N; i++) if (bars[i].size > maxSize) maxSize = bars[i].size;
       if (st.current && st.current.packet.size > maxSize) maxSize = st.current.packet.size;
       const maxH = SPARK_H - 3;
       let slide = st.current ? -STRIDE * easeOut(st.current.t) : 0;
-      for (let i = 0; i < N; i++) {
+      for (let i = start; i < N; i++) {
         const b = bars[i];
         const xBase = (W - BAR_W) - (N - 1 - i) * STRIDE;
         const x = Math.round(xBase + slide);
