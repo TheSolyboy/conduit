@@ -56,6 +56,37 @@
           <a href="#/settings" class="empty-link">add one in settings →</a>
         </div>
       </div>
+
+      <section class="summary" id="summary">
+        <div class="sum-panel sum-aggregate">
+          <div class="sum-head">
+            <span class="sum-title">aggregate</span>
+            <span class="sum-stats">
+              <span class="sum-stat"><span class="ss-k">pps</span><span class="ss-v" id="ag-pps">0</span></span>
+              <span class="sum-sep">·</span>
+              <span class="sum-stat"><span class="ss-k">pkts</span><span class="ss-v" id="ag-packets">0</span></span>
+              <span class="sum-sep">·</span>
+              <span class="sum-stat"><span class="ss-k">sources</span><span class="ss-v" id="ag-sources">0</span></span>
+            </span>
+          </div>
+          <canvas class="agg-spark" id="agg-spark" width="600" height="72"></canvas>
+          <div class="agg-axis">
+            <span>5m ago</span>
+            <span class="agg-axis-spacer"></span>
+            <span>now</span>
+          </div>
+        </div>
+
+        <div class="sum-panel sum-sources">
+          <div class="sum-head">
+            <span class="sum-title">top sources</span>
+            <span class="sum-sub">last 30s</span>
+          </div>
+          <div class="sources-list" id="sources-list">
+            <div class="sources-empty">waiting for data</div>
+          </div>
+        </div>
+      </section>
     </main>
 
     <main class="view" id="view-settings" hidden>

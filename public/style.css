@@ -385,6 +385,125 @@ html, body {
   color: var(--ink-3);
 }
 
+/* ─────────── SUMMARY (aggregate + top sources) ─────────── */
+
+.summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 24px;
+  padding: 22px 0 0;
+  margin-top: 18px;
+  border-top: 1px solid var(--rule-2);
+}
+
+.sum-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.sum-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 2px 8px;
+  white-space: nowrap;
+}
+.sum-title {
+  font-size: 10.5px;
+  color: var(--ink-3);
+  letter-spacing: 0.02em;
+}
+.sum-sub {
+  font-size: 10px;
+  color: var(--ink-4);
+}
+.sum-stats {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.sum-stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+}
+.ss-k {
+  font-size: 10px;
+  color: var(--ink-3);
+}
+.ss-v {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink);
+}
+.sum-sep {
+  color: var(--ink-4);
+}
+
+/* aggregate sparkline */
+.agg-spark {
+  display: block;
+  width: 100%;
+  height: 72px;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+}
+.agg-axis {
+  display: flex;
+  justify-content: space-between;
+  padding: 5px 2px 0;
+  font-size: 10px;
+  color: var(--ink-4);
+}
+.agg-axis-spacer { flex: 1; }
+
+/* top sources list */
+.sources-list {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--rule);
+}
+.src-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 1fr) 64px minmax(0, 1.2fr);
+  align-items: center;
+  gap: 10px;
+  padding: 4px 2px;
+  font-size: 11.5px;
+  border-bottom: 1px solid var(--rule);
+}
+.src-row:last-child { border-bottom: none; }
+.src-ip {
+  color: var(--ink);
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.src-count {
+  text-align: right;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+.src-ports {
+  color: var(--ink-3);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.src-ports .port-tag {
+  color: var(--ink-2);
+}
+.sources-empty {
+  padding: 16px 4px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--ink-4);
+}
+
 /* ─────────── EMPTY ─────────── */
 
 .empty {

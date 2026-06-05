@@ -79,18 +79,24 @@
   const MAX_QUEUE = 24;           // queued packets above this commit instantly
 
   // colors resolved at boot from CSS custom properties
-  let COL_IN       = '#8a8a8a';
-  let COL_OUT      = '#4a4a4a';
+  let COL_IN       = '#7466c4';
+  let COL_OUT      = '#a888c8';
   let COL_NEW      = '#c19a5b';
+  let COL_ACTIVITY = '#7466c4';
   let COL_BASELINE = 'rgba(255,255,255,0.05)';
 
   function resolveColors() {
     const cs = getComputedStyle(document.documentElement);
     const v = (k, fb) => (cs.getPropertyValue(k) || '').trim() || fb;
-    COL_IN  = v('--bar-in',  COL_IN);
-    COL_OUT = v('--bar-out', COL_OUT);
-    COL_NEW = v('--accent',  COL_NEW);
+    COL_IN       = v('--bar-in',   COL_IN);
+    COL_OUT      = v('--bar-out',  COL_OUT);
+    COL_NEW      = v('--accent',   COL_NEW);
+    COL_ACTIVITY = v('--activity', COL_ACTIVITY);
   }
+
+  // aggregate sparkline buffer — one sample per 'stats' tick
+  const aggHistory = [];
+  const AGG_HISTORY_MAX = 600;   // 600 samples * 500ms tick = 5 min
 
   // ── ws connect with backoff ─────────────────────────────────
 
@@ -151,6 +157,7 @@
         if (currentRoute() === 'settings') renderSettings();
         updateHeaderStats();
         updateFooter();
+        updateAggregate(state.stats, msg.meta);
         scheduleRaf();
         break;
 
@@ -168,6 +175,7 @@
         state.stats = msg.stats || {};
         for (const port in state.stats) updateRowStats(Number(port));
         updateHeaderStats();
+        updateAggregate(state.stats, msg.meta);
         break;
 
       case 'packets':
@@ -675,6 +683,145 @@
 
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) scheduleRaf();
+  });
+
+  // ── aggregate summary ───────────────────────────────────────
+
+  function updateAggregate(stats, meta) {
+    let pps = 0;
+    let totalPkts = 0;
+    for (const k in stats) {
+      pps += stats[k].reqPerSec || 0;
+      totalPkts += stats[k].total || 0;
+    }
+    setText('ag-pps', formatRps(pps));
+    setText('ag-packets', formatInt(totalPkts));
+    setText('ag-sources', String((meta && meta.activeSourcesCount) || 0));
+
+    aggHistory.push(pps);
+    while (aggHistory.length > AGG_HISTORY_MAX) aggHistory.shift();
+
+    renderTopSources(meta);
+    drawAggSpark();
+  }
+
+  function setText(id, text) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+  }
+
+  function renderTopSources(meta) {
+    const list = document.getElementById('sources-list');
+    if (!list) return;
+    const sources = (meta && meta.topSources) || [];
+    if (!sources.length) {
+      list.innerHTML = '<div class="sources-empty">no sources yet</div>';
+      return;
+    }
+    list.innerHTML = sources.map((s) => {
+      const ports = (s.ports || []);
+      let portsHtml;
+      if (ports.length <= 3) {
+        portsHtml = ports.map((p) => `<span class="port-tag">:${p}</span>`).join(' ');
+      } else {
+        portsHtml = ports.slice(0, 2).map((p) => `<span class="port-tag">:${p}</span>`).join(' ')
+                  + ` <span class="port-tag">+${ports.length - 2}</span>`;
+      }
+      return `<div class="src-row">` +
+               `<span class="src-ip">${escapeHtml(s.ip)}</span>` +
+               `<span class="src-count">${formatInt(s.count)}</span>` +
+               `<span class="src-ports">${portsHtml}</span>` +
+             `</div>`;
+    }).join('');
+  }
+
+  function ensureAggCanvas() {
+    const c = document.getElementById('agg-spark');
+    if (!c) return null;
+    const dpr = window.devicePixelRatio || 1;
+    const rect = c.getBoundingClientRect();
+    const w = Math.max(200, Math.round(rect.width));
+    const h = 72;
+    const targetW = w * dpr;
+    const targetH = h * dpr;
+    if (c.width !== targetW || c.height !== targetH) {
+      c.width = targetW;
+      c.height = targetH;
+      c.style.height = h + 'px';
+      const ctx = c.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.imageSmoothingEnabled = false;
+    }
+    c.__cssW = w;
+    c.__cssH = h;
+    return c;
+  }
+
+  function drawAggSpark() {
+    const c = ensureAggCanvas();
+    if (!c) return;
+    const ctx = c.getContext('2d');
+    const W = c.__cssW;
+    const H = c.__cssH;
+    ctx.clearRect(0, 0, W, H);
+
+    // baseline rule
+    ctx.fillStyle = COL_BASELINE;
+    ctx.fillRect(0, H - 1, W, 1);
+
+    const n = aggHistory.length;
+    if (!n) return;
+
+    // y-scale: normalize to current max with a floor so flat-zero still reads as a line
+    let maxV = 5;
+    for (let i = 0; i < n; i++) if (aggHistory[i] > maxV) maxV = aggHistory[i];
+    const yScale = (H - 4) / maxV;       // 4px top + bottom padding
+
+    // x-scale: spread the buffer across the canvas, right-anchored at "now"
+    const stride = W / Math.max(n, AGG_HISTORY_MAX);
+    const xOffset = W - n * stride;       // shift left until buffer fills the canvas
+
+    // build filled area
+    ctx.beginPath();
+    ctx.moveTo(xOffset, H - 1);
+    for (let i = 0; i < n; i++) {
+      const x = xOffset + i * stride;
+      const y = H - 1 - aggHistory[i] * yScale;
+      ctx.lineTo(x, y);
+    }
+    ctx.lineTo(xOffset + (n - 1) * stride, H - 1);
+    ctx.closePath();
+    ctx.fillStyle = withAlpha(COL_ACTIVITY, 0.18);
+    ctx.fill();
+
+    // stroke the top line — sharper edge on the leading sample
+    ctx.beginPath();
+    for (let i = 0; i < n; i++) {
+      const x = xOffset + i * stride;
+      const y = H - 1 - aggHistory[i] * yScale;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = COL_ACTIVITY;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  function withAlpha(hex, alpha) {
+    // accepts #rrggbb — returns rgba()
+    const m = /^#?([0-9a-f]{6})$/i.exec((hex || '').trim());
+    if (!m) return hex;
+    const n = parseInt(m[1], 16);
+    const r = (n >> 16) & 0xff;
+    const g = (n >> 8)  & 0xff;
+    const b =  n        & 0xff;
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+
+  // redraw on window resize so the agg-spark fills its column at the new width
+  let aggResizeT = 0;
+  window.addEventListener('resize', () => {
+    clearTimeout(aggResizeT);
+    aggResizeT = setTimeout(() => drawAggSpark(), 150);
   });
 
   // ── settings page ───────────────────────────────────────────

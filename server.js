@@ -56,12 +56,16 @@ server.on('upgrade', (req, socket, head) => {
 });
 
 wss.on('connection', (ws) => {
-  ws.send(JSON.stringify({ type: 'snapshot', config: publicConfig(), stats: computeAllStats(), recent: collectRecent() }));
+  const stats = computeAllStats();
+  const meta = computeMeta();
+  ws.send(JSON.stringify({ type: 'snapshot', config: publicConfig(), stats, meta, recent: collectRecent() }));
   ws.send(JSON.stringify({ type: 'status', captureOk: captureStatus.ok, message: captureStatus.message }));
 });
 
 setInterval(() => {
-  broadcast({ type: 'stats', stats: computeAllStats() });
+  const stats = computeAllStats();
+  const meta = computeMeta();
+  broadcast({ type: 'stats', stats, meta });
 }, STATS_TICK_MS);
 
 server.listen(config.dashboardPort, config.bindHost, () => {
@@ -447,6 +451,36 @@ function collectRecent() {
     out[port] = s.recent.slice();
   }
   return out;
+}
+
+// Top source IPs across all ports, plus a unique-source count.
+// Relies on s.sources being pruned (computeAllStats does that each tick).
+function computeMeta(limit) {
+  limit = limit || 8;
+  const counts = new Map();   // ip -> { count, ports: Set }
+  const allIps = new Set();
+  for (const [port, s] of portState) {
+    for (const { ip } of s.sources) {
+      allIps.add(ip);
+      let r = counts.get(ip);
+      if (!r) { r = { count: 0, ports: new Set() }; counts.set(ip, r); }
+      r.count += 1;
+      r.ports.add(port);
+    }
+  }
+  const arr = [];
+  for (const [ip, r] of counts) {
+    arr.push({
+      ip,
+      count: r.count,
+      ports: Array.from(r.ports).sort((a, b) => a - b)
+    });
+  }
+  arr.sort((a, b) => b.count - a.count);
+  return {
+    topSources: arr.slice(0, limit),
+    activeSourcesCount: allIps.size
+  };
 }
 
 // -----------------------------------------------------------------------------
