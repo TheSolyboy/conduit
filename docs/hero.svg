@@ -1,12 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 380" preserveAspectRatio="xMidYMid meet" width="100%" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#0d1015"/>
-      <stop offset="1" stop-color="#080a0d"/>
+      <stop offset="0" stop-color="#13151b"/>
+      <stop offset="1" stop-color="#0b0d12"/>
     </linearGradient>
     <radialGradient id="glow" cx="0.72" cy="0.0" r="0.55">
-      <stop offset="0" stop-color="#c19a5b" stop-opacity="0.10"/>
-      <stop offset="1" stop-color="#c19a5b" stop-opacity="0"/>
+      <stop offset="0" stop-color="#7466c4" stop-opacity="0.12"/>
+      <stop offset="1" stop-color="#7466c4" stop-opacity="0"/>
     </radialGradient>
   </defs>
 
@@ -16,11 +16,11 @@
   <!-- top status strip — mimics the live app -->
   <g font-size="13" fill="#5e6770">
     <circle cx="78" cy="46" r="3.5" fill="#c19a5b"/>
-    <text x="92" y="50">conduit/0.1 · capturing on en0 · 217 pps · 6 ports · up 4h32m</text>
+    <text x="92" y="50">conduit/0.1 · capturing on en0 · 217 pps · 10 ports · up 4h32m</text>
   </g>
 
   <!-- ASCII art wordmark — shadow layer -->
-  <text x="0" y="0" font-size="22" font-weight="700" fill="#6e4f23" xml:space="preserve">
+  <text x="0" y="0" font-size="22" font-weight="700" fill="#3f3873" xml:space="preserve">
     <tspan x="262" y="114"> ██████╗ ██████╗ ███╗   ██╗██████╗ ██╗   ██╗██╗████████╗</tspan>
     <tspan x="262" dy="26">██╔════╝██╔═══██╗████╗  ██║██╔══██╗██║   ██║██║╚══██╔══╝</tspan>
     <tspan x="262" dy="26">██║     ██║   ██║██╔██╗ ██║██║  ██║██║   ██║██║   ██║   </tspan>
@@ -30,7 +30,7 @@
   </text>
 
   <!-- ASCII art wordmark — main layer -->
-  <text x="0" y="0" font-size="22" font-weight="700" fill="#d4a86c" xml:space="preserve">
+  <text x="0" y="0" font-size="22" font-weight="700" fill="#9080dd" xml:space="preserve">
     <tspan x="258" y="111"> ██████╗ ██████╗ ███╗   ██╗██████╗ ██╗   ██╗██╗████████╗</tspan>
     <tspan x="258" dy="26">██╔════╝██╔═══██╗████╗  ██║██╔══██╗██║   ██║██║╚══██╔══╝</tspan>
     <tspan x="258" dy="26">██║     ██║   ██║██╔██╗ ██║██║  ██║██║   ██║██║   ██║   </tspan>
@@ -47,8 +47,8 @@
   <!-- baseline rule -->
   <line x1="80" y1="350" x2="1200" y2="350" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
 
-  <!-- sparkline-style bars under the baseline (illustrative) -->
-  <g fill="#8a8a8a">
+  <!-- sparkline-style bars under the baseline (illustrative, app palette) -->
+  <g fill="#7466c4">
     <rect x="80"  y="345" width="2" height="5"/>
     <rect x="83"  y="338" width="2" height="12"/>
     <rect x="86"  y="332" width="2" height="18"/>
@@ -65,14 +65,14 @@
     <rect x="119" y="332" width="2" height="18"/>
     <rect x="122" y="340" width="2" height="10"/>
   </g>
-  <g fill="#4a4a4a">
+  <g fill="#a888c8">
     <rect x="125" y="343" width="2" height="7"/>
     <rect x="128" y="337" width="2" height="13"/>
     <rect x="131" y="340" width="2" height="10"/>
     <rect x="134" y="334" width="2" height="16"/>
     <rect x="137" y="338" width="2" height="12"/>
   </g>
-  <g fill="#8a8a8a">
+  <g fill="#7466c4">
     <rect x="140" y="330" width="2" height="20"/>
     <rect x="143" y="333" width="2" height="17"/>
     <rect x="146" y="338" width="2" height="12"/>
@@ -87,18 +87,18 @@
     <rect x="173" y="335" width="2" height="15"/>
     <rect x="176" y="330" width="2" height="20"/>
   </g>
-  <g fill="#4a4a4a">
+  <g fill="#a888c8">
     <rect x="179" y="338" width="2" height="12"/>
     <rect x="182" y="342" width="2" height="8"/>
     <rect x="185" y="336" width="2" height="14"/>
   </g>
-  <g fill="#8a8a8a">
+  <g fill="#7466c4">
     <rect x="188" y="330" width="2" height="20"/>
     <rect x="191" y="333" width="2" height="17"/>
     <rect x="194" y="328" width="2" height="22"/>
     <rect x="197" y="336" width="2" height="14"/>
     <rect x="200" y="339" width="2" height="11"/>
   </g>
-  <!-- amber leading bar -->
+  <!-- amber leading bar (matches the app's newest-packet accent) -->
   <rect x="203" y="324" width="2" height="26" fill="#c19a5b"/>
 </svg>

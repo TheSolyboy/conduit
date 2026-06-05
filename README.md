@@ -3,8 +3,8 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/license-MIT-c19a5b?style=flat-square&labelColor=15171b" alt="MIT" />
-  <img src="https://img.shields.io/badge/node-18%2B-c19a5b?style=flat-square&labelColor=15171b" alt="Node 18+" />
+  <img src="https://img.shields.io/badge/license-MIT-7466c4?style=flat-square&labelColor=15171b" alt="MIT" />
+  <img src="https://img.shields.io/badge/node-18%2B-7466c4?style=flat-square&labelColor=15171b" alt="Node 18+" />
   <img src="https://img.shields.io/badge/transport-WebSocket-8a8a8a?style=flat-square&labelColor=15171b" alt="WebSocket" />
   <img src="https://img.shields.io/badge/capture-libpcap-8a8a8a?style=flat-square&labelColor=15171b" alt="libpcap" />
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS-8a8a8a?style=flat-square&labelColor=15171b" alt="platform" />
@@ -13,7 +13,7 @@
 **A quiet, data-dense network monitor that lives on a second monitor.** Capture live packets on a Linux or macOS box, attribute them to the ports you actually care about, and watch them stream into a terminal-styled browser dashboard. No payloads inspected. No analytics. Just per-port traffic, in real time, on one page.
 
 <p align="center">
-  <img src="docs/demo.gif" alt="conduit live dashboard — animated demo" width="100%" />
+  <img src="docs/conduitshowcase.gif" alt="conduit live dashboard — animated demo" width="100%" />
 </p>
 
 ---
