@@ -4,7 +4,7 @@
    ────────────────────────────────────────────────────────────── */
 
 :root {
-  --bg:        #0b0d10;
+  --bg:        #111318;
   --ink:       #d4d4d4;
   --ink-2:     #8a8a8a;
   --ink-3:     #555555;
@@ -13,18 +13,25 @@
   --rule:      rgba(255, 255, 255, 0.035);
   --rule-2:    rgba(255, 255, 255, 0.07);
 
-  /* the single decorative accent — used only for: capturing dot,
-     active tab underline, the leading bar in the sparkline */
+  /* amber accent — capturing dot + active tab underline */
   --accent:    #c19a5b;
+
+  /* activity accent — bar chart hue family + row pulse */
+  --activity:        #7466c4;
+  --activity-bright: #a190dd;
 
   /* semantic-only colors (informative, not decorative) */
   --up:        #6b8b5e;
   --down:      #8b5e5e;
   --err:       #8b5e5e;
 
-  /* bar chart greys */
-  --bar-in:    #8a8a8a;
-  --bar-out:   #4a4a4a;
+  /* bar chart — muted indigo/violet, same hue family */
+  --bar-in:    #7466c4;     /* cooler, blue-violet */
+  --bar-out:   #a888c8;     /* warmer, pink-violet */
+
+  /* numeric column tints — subtle cool/warm */
+  --num-in:    #94b8d0;     /* cool tint */
+  --num-out:   #c4a882;     /* warm tint */
 
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
@@ -224,6 +231,8 @@ html, body {
   border-bottom: 1px solid var(--rule);
   position: relative;
   --pulse: 0;
+  opacity: 1;
+  transition: opacity 600ms ease;
 }
 .row:last-child { border-bottom: none; }
 .row::before {
@@ -231,11 +240,15 @@ html, body {
   position: absolute;
   left: 0; top: 0; bottom: 0;
   width: 2px;
-  background: var(--accent);
-  opacity: var(--pulse);
+  background: var(--activity);
+  opacity: calc(var(--pulse, 0) * 0.7);
   pointer-events: none;
 }
 .row:hover { background: rgba(255, 255, 255, 0.015); }
+
+/* idle rows recede significantly so active rows pop at a glance —
+   a packet pulse briefly punches through the dim via max() */
+.row.is-idle { opacity: max(0.38, var(--pulse, 0)); }
 
 .cell {
   display: flex;
@@ -341,6 +354,14 @@ html, body {
 .cell-num.flash-up    { color: var(--up); transition: color 60ms ease-out; }
 .cell-num.flash-down  { color: var(--down); transition: color 60ms ease-out; }
 
+/* subtle hue tint for direction-coded values */
+.cell-num.js-in  { color: var(--num-in); }
+.cell-num.js-out { color: var(--num-out); }
+.cell-num.js-in.flash-up,
+.cell-num.js-out.flash-up    { color: var(--up); }
+.cell-num.js-in.flash-down,
+.cell-num.js-out.flash-down  { color: var(--down); }
+
 /* source IP */
 .cell-mono {
   justify-content: flex-start;
@@ -418,7 +439,7 @@ html, body {
 }
 .setrow {
   display: grid;
-  grid-template-columns: 60px minmax(180px, 1fr) auto auto;
+  grid-template-columns: 60px minmax(0, 1fr) minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 12px;
   padding: 0 12px;
@@ -454,7 +475,7 @@ html, body {
 }
 .add-form-row {
   display: grid;
-  grid-template-columns: 100px 1fr auto;
+  grid-template-columns: 100px 1fr 1fr auto;
   gap: 10px;
   align-items: end;
 }

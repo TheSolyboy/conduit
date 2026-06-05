@@ -377,48 +377,44 @@
     return el;
   }
 
+  function resolveIconSrc(p) {
+    const custom = (p.icon || '').trim();
+    if (custom) {
+      // URL (http/https/protocol-relative/absolute path) → use as-is.
+      // Otherwise treat as a Simple Icons slug and colorize muted.
+      if (/^(https?:\/\/|\/\/|\/)/i.test(custom)) return custom;
+      return `https://cdn.simpleicons.org/${encodeURIComponent(custom)}/8a8a8a`;
+    }
+    // No custom icon — auto-detect only if name is also auto
+    if (isAutoName(p.port, p.name)) {
+      const slug = PORT_ICONS[p.port];
+      if (slug) return `https://cdn.simpleicons.org/${slug}/8a8a8a`;
+    }
+    return null;
+  }
+
   function fillPortCell(cell, p) {
     const auto = isAutoName(p.port, p.name);
-    const slug = auto ? PORT_ICONS[p.port] : null;
+    const iconSrc = resolveIconSrc(p);
     cell.innerHTML = '';
 
-    if (auto && slug) {
-      // logo + small :port
+    if (iconSrc) {
       const iconWrap = document.createElement('span');
       iconWrap.className = 'port-icon';
       const img = document.createElement('img');
       img.className = 'port-icon-img';
-      img.alt = slug;
+      img.alt = '';
       img.width = 18;
       img.height = 18;
       img.loading = 'lazy';
-      // Simple Icons CDN: pass hex (no #) to colorize the SVG
-      img.src = `https://cdn.simpleicons.org/${slug}/8a8a8a`;
-      img.onerror = () => {
-        // fallback: replace icon with the port number, treat like no-slug case
-        iconWrap.remove();
-        const fb = document.createElement('div');
-        fb.className = 'port-num-only';
-        fb.textContent = ':' + p.port;
-        cell.prepend(fb);
-      };
+      img.src = iconSrc;
+      img.onerror = () => { iconWrap.remove(); };
       iconWrap.appendChild(img);
       cell.appendChild(iconWrap);
+    }
 
-      const portNum = document.createElement('div');
-      portNum.className = 'port-num';
-      portNum.textContent = ':' + p.port;
-      cell.appendChild(portNum);
-
-    } else if (auto && !slug) {
-      // no logo, no custom name — show port number on its own
-      const portMain = document.createElement('div');
-      portMain.className = 'port-num-only';
-      portMain.textContent = ':' + p.port;
-      cell.appendChild(portMain);
-
-    } else {
-      // custom name + small :port
+    if (!auto) {
+      // custom name (with or without icon) — name on top, :port small below
       const text = document.createElement('div');
       text.className = 'port-text';
       const name = document.createElement('div');
@@ -430,6 +426,18 @@
       text.appendChild(name);
       text.appendChild(portNum);
       cell.appendChild(text);
+    } else if (iconSrc) {
+      // auto name with icon — small :port next to icon
+      const portNum = document.createElement('div');
+      portNum.className = 'port-num';
+      portNum.textContent = ':' + p.port;
+      cell.appendChild(portNum);
+    } else {
+      // no icon, no custom name — just :port on its own
+      const portMain = document.createElement('div');
+      portMain.className = 'port-num-only';
+      portMain.textContent = ':' + p.port;
+      cell.appendChild(portMain);
     }
   }
 
@@ -692,6 +700,7 @@
       row.innerHTML =
         `<span class="port-chip">${escapeHtml(String(p.port))}</span>` +
         `<input type="text" class="js-name" value="${auto ? '' : escapeHtml(p.name)}" placeholder="auto" maxlength="40" />` +
+        `<input type="text" class="js-icon" value="${escapeHtml(p.icon || '')}" placeholder="slug or URL" maxlength="200" />` +
         `<span class="move">` +
           `<button class="icon-btn js-up"   ${i === 0 ? 'disabled' : ''} title="move up">↑</button>` +
           `<button class="icon-btn js-down" ${i === state.config.ports.length - 1 ? 'disabled' : ''} title="move down">↓</button>` +
@@ -702,6 +711,8 @@
       row.querySelector('.js-rm').onclick   = () => removeAt(i);
       const nameInput = row.querySelector('.js-name');
       nameInput.onchange = () => renameAt(i, nameInput.value);
+      const iconInput = row.querySelector('.js-icon');
+      iconInput.onchange = () => setIconAt(i, iconInput.value);
       list.appendChild(row);
     });
 
@@ -728,6 +739,12 @@
   function renameAt(i, name) {
     const arr = state.config.ports.slice();
     arr[i] = { ...arr[i], name: (name || '').trim() };
+    putConfig({ ports: arr });
+  }
+
+  function setIconAt(i, icon) {
+    const arr = state.config.ports.slice();
+    arr[i] = { ...arr[i], icon: (icon || '').trim() };
     putConfig({ ports: arr });
   }
 
@@ -760,8 +777,10 @@
     e.preventDefault();
     const portInput = document.getElementById('add-port');
     const nameInput = document.getElementById('add-name');
+    const iconInput = document.getElementById('add-icon');
     const port = Number(portInput.value);
     const name = (nameInput.value || '').trim();
+    const icon = (iconInput.value || '').trim();
     if (!Number.isInteger(port) || port < 1 || port > 65535) {
       setSaveHint('invalid port', 'fail'); return;
     }
@@ -769,9 +788,9 @@
       setSaveHint(`port ${port} already monitored`, 'fail'); return;
     }
     const arr = state.config.ports.slice();
-    arr.push({ port, name });
+    arr.push({ port, name, icon });
     putConfig({ ports: arr })
-      .then(() => { portInput.value = ''; nameInput.value = ''; portInput.focus(); setSaveHint(`added :${port}`, 'ok'); })
+      .then(() => { portInput.value = ''; nameInput.value = ''; iconInput.value = ''; portInput.focus(); setSaveHint(`added :${port}`, 'ok'); })
       .catch((err) => setSaveHint(err.message, 'fail'));
   });
 

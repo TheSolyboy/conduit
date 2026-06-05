@@ -74,8 +74,12 @@
               <input type="number" id="add-port" placeholder="8080" min="1" max="65535" required />
             </label>
             <label class="field field-wide">
-              <span class="field-label">display name <span class="field-opt">(optional, blank = auto)</span></span>
+              <span class="field-label">display name <span class="field-opt">(blank = auto)</span></span>
               <input type="text" id="add-name" placeholder="auto" maxlength="40" />
+            </label>
+            <label class="field field-wide">
+              <span class="field-label">icon <span class="field-opt">(slug or URL)</span></span>
+              <input type="text" id="add-icon" placeholder="auto" maxlength="200" />
             </label>
             <button type="submit" class="btn">add</button>
           </div>

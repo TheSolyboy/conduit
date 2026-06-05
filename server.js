@@ -197,7 +197,11 @@ function normalizeConfig(parsed) {
   if (!Array.isArray(cfg.ports)) cfg.ports = [];
   const seen = new Set();
   cfg.ports = cfg.ports
-    .map((p) => ({ port: Number(p.port), name: String(p.name || '').trim() || `Port ${p.port}` }))
+    .map((p) => ({
+      port: Number(p.port),
+      name: String(p.name || '').trim() || `Port ${p.port}`,
+      icon: String(p.icon || '').trim()
+    }))
     .filter((p) => Number.isInteger(p.port) && p.port > 0 && p.port < 65536 && !seen.has(p.port) && seen.add(p.port));
   return cfg;
 }
@@ -223,7 +227,7 @@ function publicConfig() {
     dashboardPort: config.dashboardPort,
     bindHost: config.bindHost,
     interface: config.interface,
-    ports: config.ports.map((p) => ({ port: p.port, name: p.name }))
+    ports: config.ports.map((p) => ({ port: p.port, name: p.name, icon: p.icon || '' }))
   };
 }
 
