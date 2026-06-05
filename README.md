@@ -12,6 +12,10 @@
 
 **A quiet, data-dense network monitor that lives on a second monitor.** Capture live packets on a Linux or macOS box, attribute them to the ports you actually care about, and watch them stream into a terminal-styled browser dashboard. No payloads inspected. No analytics. Just per-port traffic, in real time, on one page.
 
+<p align="center">
+  <img src="docs/demo.gif" alt="conduit live dashboard — animated demo" width="100%" />
+</p>
+
 ---
 
 ## What it does

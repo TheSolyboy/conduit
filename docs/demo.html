@@ -1,0 +1,568 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=1280" />
+  <title>conduit — demo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" />
+  <style>
+  /* ───────────────────────────────────────────────────────────
+     conduit demo — self-contained, synthetic traffic
+     (styles mirror public/style.css)
+     ─────────────────────────────────────────────────────────── */
+  :root {
+    --bg:        #111318;
+    --ink:       #d4d4d4;
+    --ink-2:     #8a8a8a;
+    --ink-3:     #555555;
+    --ink-4:     #333333;
+    --rule:      rgba(255, 255, 255, 0.035);
+    --rule-2:    rgba(255, 255, 255, 0.07);
+    --accent:    #c19a5b;
+    --activity:        #7466c4;
+    --activity-bright: #a190dd;
+    --up:        #6b8b5e;
+    --down:      #8b5e5e;
+    --err:       #8b5e5e;
+    --bar-in:    #7466c4;
+    --bar-out:   #a888c8;
+    --num-in:    #94b8d0;
+    --num-out:   #c4a882;
+    --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --row-h:     40px;
+    --hdr-h:     48px;
+    --gh-h:      28px;
+    --grid-cols: minmax(150px, 1.1fr) 200px 70px 70px 60px 130px 80px 70px;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg); color: var(--ink);
+    font-family: var(--mono); font-size: 12px; line-height: 1.4;
+    -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+    font-variant-numeric: tabular-nums slashed-zero;
+    font-feature-settings: "zero", "ss19";
+  }
+  .app { max-width: 1520px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; }
+
+  .hdr { height: var(--hdr-h); padding: 0 16px; display: flex; align-items: center; gap: 14px;
+    border-bottom: 1px solid var(--rule); font-size: 11.5px; white-space: nowrap; }
+  .brand { color: var(--ink); font-weight: 600; letter-spacing: -0.01em; font-size: 12.5px; }
+  .brand-tag { color: var(--ink-3); font-size: 10.5px; margin-left: -8px; }
+  .hdr-sep { color: var(--ink-4); user-select: none; }
+  .status { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-4); transition: background 0.2s; }
+  .status[data-state="ok"] { color: var(--ink); }
+  .status[data-state="ok"] .status-dot { background: var(--accent); }
+  .stat { display: inline-flex; align-items: baseline; gap: 5px; color: var(--ink-2); }
+  .stat-k { color: var(--ink-3); }
+  .stat-v { color: var(--ink); }
+  .tabs { margin-left: auto; display: flex; gap: 18px; }
+  .tab { position: relative; color: var(--ink-3); text-decoration: none; padding: 4px 0; font-size: 11.5px; }
+  .tab.active { color: var(--ink); }
+  .tab.active::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 1px; background: var(--accent); }
+
+  .view { padding: 14px 16px 24px; flex: 1; min-width: 0; }
+  .grid { background: transparent; }
+  .grid-head, .row { display: grid; grid-template-columns: var(--grid-cols); align-items: center; gap: 0 14px; padding: 0 12px; }
+  .grid-head { height: var(--gh-h); border-bottom: 1px solid var(--rule-2); color: var(--ink-3); font-size: 10.5px; font-weight: 500; white-space: nowrap; }
+  .gh { display: flex; align-items: center; gap: 6px; }
+  .gh-in, .gh-out, .gh-rps, .gh-total, .gh-last { justify-content: flex-end; }
+  .gh-sub { color: var(--ink-4); font-weight: 400; }
+
+  .row { height: var(--row-h); border-bottom: 1px solid var(--rule); position: relative; --pulse: 0; opacity: 1; transition: opacity 600ms ease; }
+  .row:last-child { border-bottom: none; }
+  .row::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--activity); opacity: calc(var(--pulse, 0) * 0.7); pointer-events: none; }
+  .row.is-idle { opacity: max(0.38, var(--pulse, 0)); }
+
+  .cell { display: flex; align-items: center; min-width: 0; height: 100%; }
+  .cell-name { flex-direction: row; align-items: center; gap: 10px; min-width: 0; }
+  .port-icon { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; flex-shrink: 0; }
+  .port-icon img { width: 18px; height: 18px; display: block; filter: brightness(0.85); opacity: 0.88; }
+  .port-num-only { font-size: 12.5px; font-weight: 500; color: var(--ink); letter-spacing: -0.005em; }
+  .port-text { display: flex; flex-direction: column; justify-content: center; gap: 0; min-width: 0; line-height: 1.15; }
+  .port-name { font-size: 12.5px; font-weight: 500; color: var(--ink); letter-spacing: -0.005em; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .port-num { font-size: 10px; font-weight: 400; color: var(--ink-3); }
+
+  .cell-chart { position: relative; justify-content: flex-start; height: 28px; align-self: center; }
+  .spark { display: block; }
+
+  .cell-num { justify-content: flex-end; font-size: 12px; font-weight: 500; color: var(--ink); white-space: nowrap; gap: 5px; transition: color 200ms ease; }
+  .cell-num .dash { color: var(--ink-4); font-weight: 400; }
+  .cell-num.flash-up { color: var(--up); transition: color 60ms ease-out; }
+  .cell-num.flash-down { color: var(--down); transition: color 60ms ease-out; }
+  .cell-num.js-in { color: var(--num-in); }
+  .cell-num.js-out { color: var(--num-out); }
+  .cell-num.js-in.flash-up, .cell-num.js-out.flash-up { color: var(--up); }
+  .cell-num.js-in.flash-down, .cell-num.js-out.flash-down { color: var(--down); }
+
+  .cell-mono { justify-content: flex-start; font-size: 11.5px; font-weight: 400; color: var(--ink-2); letter-spacing: -0.005em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity 200ms ease; }
+  .cell-mono.fading { opacity: 0; }
+  .cell-last { justify-content: flex-end; font-size: 11.5px; font-weight: 400; color: var(--ink-3); }
+
+  .summary { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 24px; padding: 22px 0 0; margin-top: 18px; border-top: 1px solid var(--rule-2); }
+  .sum-panel { display: flex; flex-direction: column; min-width: 0; }
+  .sum-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 0 2px 8px; white-space: nowrap; }
+  .sum-title { font-size: 10.5px; color: var(--ink-3); letter-spacing: 0.02em; }
+  .sum-sub { font-size: 10px; color: var(--ink-4); }
+  .sum-stats { display: inline-flex; align-items: baseline; gap: 8px; }
+  .sum-stat { display: inline-flex; align-items: baseline; gap: 5px; }
+  .ss-k { font-size: 10px; color: var(--ink-3); }
+  .ss-v { font-size: 12px; font-weight: 500; color: var(--ink); }
+  .sum-sep { color: var(--ink-4); }
+  .agg-spark { display: block; width: 100%; height: 72px; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+  .agg-axis { display: flex; justify-content: space-between; padding: 5px 2px 0; font-size: 10px; color: var(--ink-4); }
+  .sources-list { display: flex; flex-direction: column; border-top: 1px solid var(--rule); }
+  .src-row { display: grid; grid-template-columns: minmax(110px, 1fr) 64px minmax(0, 1.2fr); align-items: center; gap: 10px; padding: 4px 2px; font-size: 11.5px; border-bottom: 1px solid var(--rule); }
+  .src-row:last-child { border-bottom: none; }
+  .src-ip { color: var(--ink); letter-spacing: -0.005em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .src-count { text-align: right; color: var(--ink-2); }
+  .src-ports { color: var(--ink-3); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .src-ports .port-tag { color: var(--ink-2); }
+
+  .ftr { border-top: 1px solid var(--rule); height: 28px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; }
+  .ftr-meta { font-size: 10.5px; color: var(--ink-4); }
+  .ftr-kbd { display: flex; gap: 14px; }
+  .kbd-hint { font-size: 10px; color: var(--ink-3); }
+  .kbd-hint kbd { font-family: var(--mono); font-size: 9.5px; background: transparent; border: 1px solid var(--rule-2); color: var(--ink-2); padding: 0 4px; line-height: 14px; display: inline-block; }
+
+  /* tiny "demo" ribbon so it's obvious this is synthetic, removable for the GIF */
+  .demo-tag { color: var(--ink-4); font-size: 10px; border: 1px solid var(--rule-2); padding: 1px 6px; margin-left: 2px; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="hdr">
+      <span class="brand">conduit</span>
+      <span class="brand-tag">v0.1</span>
+      <span class="demo-tag">demo</span>
+      <span class="hdr-sep">·</span>
+      <span class="status" id="status" data-state="ok">
+        <span class="status-dot"></span>
+        <span class="status-text">capturing</span>
+      </span>
+      <span class="hdr-sep">·</span>
+      <span class="stat"><span class="stat-k">iface</span><span class="stat-v">any</span></span>
+      <span class="stat"><span class="stat-k">pps</span><span class="stat-v" id="hs-pps">0</span></span>
+      <span class="stat"><span class="stat-k">ports</span><span class="stat-v" id="hs-ports">0</span></span>
+      <span class="stat"><span class="stat-k">up</span><span class="stat-v" id="hs-uptime">0s</span></span>
+      <nav class="tabs">
+        <a href="#" class="tab active">live</a>
+        <a href="#" class="tab">settings</a>
+      </nav>
+    </header>
+
+    <main class="view">
+      <div class="grid">
+        <div class="grid-head">
+          <div class="gh gh-name">port</div>
+          <div class="gh gh-chart">traffic <span class="gh-sub">last 60</span></div>
+          <div class="gh gh-in">in <span class="gh-sub">avg30</span></div>
+          <div class="gh gh-out">out <span class="gh-sub">avg30</span></div>
+          <div class="gh gh-rps">req/s</div>
+          <div class="gh gh-src">top source</div>
+          <div class="gh gh-total">total</div>
+          <div class="gh gh-last">last</div>
+        </div>
+        <div class="rows" id="rows"></div>
+      </div>
+
+      <section class="summary">
+        <div class="sum-panel">
+          <div class="sum-head">
+            <span class="sum-title">aggregate</span>
+            <span class="sum-stats">
+              <span class="sum-stat"><span class="ss-k">pps</span><span class="ss-v" id="ag-pps">0</span></span>
+              <span class="sum-sep">·</span>
+              <span class="sum-stat"><span class="ss-k">pkts</span><span class="ss-v" id="ag-packets">0</span></span>
+              <span class="sum-sep">·</span>
+              <span class="sum-stat"><span class="ss-k">sources</span><span class="ss-v" id="ag-sources">0</span></span>
+            </span>
+          </div>
+          <canvas class="agg-spark" id="agg-spark" width="600" height="72"></canvas>
+          <div class="agg-axis"><span>5m ago</span><span>now</span></div>
+        </div>
+
+        <div class="sum-panel">
+          <div class="sum-head">
+            <span class="sum-title">top sources</span>
+            <span class="sum-sub">last 30s</span>
+          </div>
+          <div class="sources-list" id="sources-list"></div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="ftr">
+      <span class="ftr-meta">conduit/0.1 · any · 6 ports · :4200</span>
+      <span class="ftr-kbd">
+        <span class="kbd-hint"><kbd>g</kbd>&nbsp;live</span>
+        <span class="kbd-hint"><kbd>s</kbd>&nbsp;settings</span>
+      </span>
+    </footer>
+  </div>
+
+  <script>
+  (() => {
+    'use strict';
+
+    // ── demo port definitions, each with its own traffic "personality" ──
+    // rate = packets/sec target; inRatio = share of inbound; sizes biased per service
+    const PORTS = [
+      { port: 22,   name: 'SSH',         icon: null,          rate: 3,   inRatio: 0.5,  sizeMin: 60,  sizeMax: 340  },
+      { port: 80,   name: '',            icon: 'nginx',       rate: 38,  inRatio: 0.62, sizeMin: 80,  sizeMax: 1480 },
+      { port: 443,  name: '',            icon: 'nginx',       rate: 96,  inRatio: 0.58, sizeMin: 90,  sizeMax: 1480 },
+      { port: 5432, name: '',            icon: 'postgresql',  rate: 22,  inRatio: 0.5,  sizeMin: 120, sizeMax: 980  },
+      { port: 6379, name: '',            icon: 'redis',       rate: 14,  inRatio: 0.55, sizeMin: 60,  sizeMax: 420, bursty: true },
+      { port: 3000, name: 'API server',  icon: 'nodedotjs',   rate: 30,  inRatio: 0.6,  sizeMin: 90,  sizeMax: 1280 },
+      { port: 8080, name: '',            icon: null,          rate: 0,   inRatio: 0.5,  sizeMin: 80,  sizeMax: 900  }  // idle row
+    ];
+
+    // pools of source IPs per port so "top source" shifts over time
+    const SRC_POOLS = {
+      22:   ['10.0.1.9', '192.168.10.14', '100.86.81.90'],
+      80:   ['192.168.1.18', '10.0.6.1', '172.20.4.7', '188.114.97.3'],
+      443:  ['172.20.4.7', '192.168.10.200', '104.28.12.9', '162.158.78.21', '10.0.1.9'],
+      5432: ['10.0.4.7', '10.0.2.18', '127.0.0.1'],
+      6379: ['10.0.1.9', '127.0.0.1', '10.0.0.1'],
+      3000: ['10.0.1.1', '192.168.1.18', '10.0.4.21', '100.66.134.210'],
+      8080: ['10.0.4.21']
+    };
+
+    // ── colors from CSS ──
+    const cs = getComputedStyle(document.documentElement);
+    const v = (k, fb) => (cs.getPropertyValue(k) || '').trim() || fb;
+    const COL_IN  = v('--bar-in',  '#7466c4');
+    const COL_OUT = v('--bar-out', '#a888c8');
+    const COL_NEW = v('--accent',  '#c19a5b');
+    const COL_ACT = v('--activity','#7466c4');
+    const COL_BASE = 'rgba(255,255,255,0.05)';
+
+    // ── sparkline geometry (matches the real app) ──
+    const SPARK_W = 200, SPARK_H = 28, BAR_W = 2, STRIDE = 3, MAX_BARS = 60;
+    const ANIM_MS = 150, FLOOR_SIZE = 200, PULSE_MS = 400, MAX_QUEUE = 24;
+
+    const fmtInt = (n) => { n = Math.round(n); return n < 1000 ? String(n) : n.toLocaleString('en-US').replace(/,/g, ' '); };
+    const fmtRps = (x) => x <= 0 ? '0' : x >= 1000 ? (x/1000).toFixed(1)+'k' : x >= 100 ? Math.round(x).toString() : x >= 10 ? x.toFixed(1) : x.toFixed(2);
+    const pad = (x) => String(x).padStart(2, '0');
+    const fmtTime = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    const rand = (a, b) => a + Math.random() * (b - a);
+    const easeOut = (t) => 1 - Math.pow(1 - t, 3);
+
+    const rowEls = new Map();   // port -> { el, st, stats }
+    const aggHistory = [];
+    const AGG_MAX = 600;
+    const bootAt = Date.now();
+    let grandTotal = 0;
+
+    // timing
+    const TICK_MS = 500;   // stats / aggregate / sources cadence
+    const EMIT_MS = 60;    // synthetic packet emission cadence
+
+    // ── build rows ──
+    const rowsEl = document.getElementById('rows');
+    for (const p of PORTS) {
+      const el = document.createElement('div');
+      el.className = 'row is-idle';
+      el.dataset.port = p.port;
+
+      // port cell
+      let nameHtml;
+      const iconHtml = p.icon ? `<span class="port-icon"><img src="https://cdn.simpleicons.org/${p.icon}/8a8a8a" width="18" height="18" alt=""></span>` : '';
+      if (p.name) {
+        nameHtml = `<div class="cell cell-name">${iconHtml}<div class="port-text"><div class="port-name">${p.name}</div><div class="port-num">:${p.port}</div></div></div>`;
+      } else if (p.icon) {
+        nameHtml = `<div class="cell cell-name">${iconHtml}<div class="port-num">:${p.port}</div></div>`;
+      } else {
+        nameHtml = `<div class="cell cell-name"><div class="port-num-only">:${p.port}</div></div>`;
+      }
+
+      el.innerHTML =
+        nameHtml +
+        `<div class="cell cell-chart"><canvas class="spark" width="${SPARK_W}" height="${SPARK_H}"></canvas></div>` +
+        `<div class="cell cell-num js-in"><span class="dash">—</span></div>` +
+        `<div class="cell cell-num js-out"><span class="dash">—</span></div>` +
+        `<div class="cell cell-num js-rps"><span class="dash">—</span></div>` +
+        `<div class="cell cell-mono js-src"><span class="dash">—</span></div>` +
+        `<div class="cell cell-num js-total"><span class="dash">—</span></div>` +
+        `<div class="cell cell-last js-last"><span class="dash">—</span></div>`;
+      rowsEl.appendChild(el);
+
+      // canvas dpr
+      const canvas = el.querySelector('canvas');
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = SPARK_W * dpr; canvas.height = SPARK_H * dpr;
+      canvas.style.width = SPARK_W + 'px'; canvas.style.height = SPARK_H + 'px';
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.imageSmoothingEnabled = false;
+
+      rowEls.set(p.port, {
+        cfg: p, el, canvas,
+        st: { bars: [], queue: [], current: null, pulse: 0 },
+        in30: [], out30: [], times: [], sources: [], total: 0, lastSeen: 0,
+        topSource: '', burstUntil: 0
+      });
+    }
+
+    // ── synthetic packet emission ──
+    // Driven by setInterval (survives tab backgrounding far better than rAF)
+    // and scaled by real elapsed wall-clock time, clamped so a paused tab
+    // doesn't dump a huge backlog when it resumes.
+    let lastEmit = 0;
+    function emitTick() {
+      const now = Date.now();
+      const elapsed = lastEmit ? Math.min(250, now - lastEmit) : EMIT_MS;
+      lastEmit = now;
+      for (const r of rowEls.values()) {
+        let rate = r.cfg.rate;
+        if (rate <= 0) continue;
+        // bursty services occasionally spike
+        if (r.cfg.bursty) {
+          if (now > r.burstUntil && Math.random() < 0.04) r.burstUntil = now + rand(800, 2000);
+          if (now < r.burstUntil) rate *= 4;
+        }
+        // gentle sine modulation so the aggregate chart breathes
+        const mod = 0.7 + 0.6 * (0.5 + 0.5 * Math.sin(now / 4000 + r.cfg.port));
+        const expected = (rate * mod) * (elapsed / 1000);
+        let count = Math.floor(expected);
+        if (Math.random() < (expected - count)) count++;
+        for (let i = 0; i < count; i++) {
+          const dir = Math.random() < r.cfg.inRatio ? 'in' : 'out';
+          // size: skew small with occasional large
+          let size = rand(r.cfg.sizeMin, r.cfg.sizeMax);
+          if (Math.random() < 0.18) size = rand(r.cfg.sizeMax * 0.7, r.cfg.sizeMax);
+          size = Math.round(size);
+          const pool = SRC_POOLS[r.cfg.port];
+          const ip = pool[Math.floor(Math.random() * pool.length)];
+          record(r, dir, size, ip, now);
+        }
+      }
+    }
+
+    function record(r, dir, size, ip, ts) {
+      const st = r.st;
+      while (st.queue.length >= MAX_QUEUE) {
+        const drop = st.queue.shift();
+        st.bars.push(drop); if (st.bars.length > MAX_BARS) st.bars.shift();
+      }
+      st.queue.push({ dir, size, ts });
+      if (dir === 'in') { r.in30.push(size); if (r.in30.length > 30) r.in30.shift(); r.sources.push({ ip, ts }); }
+      else { r.out30.push(size); if (r.out30.length > 30) r.out30.shift(); }
+      r.times.push(ts);
+      r.total += 1; grandTotal += 1; r.lastSeen = ts;
+    }
+
+    // ── stats tick (every 500ms) ──
+    function statsTick() {
+      const now = Date.now();
+      let aggPps = 0;
+      const globalCounts = new Map();
+      const allIps = new Set();
+
+      for (const r of rowEls.values()) {
+        while (r.times.length && now - r.times[0] > 5000) r.times.shift();
+        while (r.sources.length && now - r.sources[0].ts > 30000) r.sources.shift();
+
+        const inAvg = avg(r.in30), outAvg = avg(r.out30);
+        const rps = r.times.length / 5;
+        aggPps += rps;
+
+        // top source
+        let top = '';
+        if (r.sources.length) {
+          const c = new Map();
+          for (const s of r.sources) { c.set(s.ip, (c.get(s.ip)||0)+1); allIps.add(s.ip); globalCounts.set(s.ip, (globalCounts.get(s.ip)||0)+1); }
+          let best = '', bc = -1;
+          for (const [ip, n] of c) { if (n > bc) { bc = n; best = ip; } }
+          top = best;
+        }
+
+        setNum(r.el.querySelector('.js-in'),  inAvg > 0 ? fmtInt(inAvg) : null, r._pin, inAvg); r._pin = inAvg;
+        setNum(r.el.querySelector('.js-out'), outAvg > 0 ? fmtInt(outAvg) : null, r._pout, outAvg); r._pout = outAvg;
+        setNum(r.el.querySelector('.js-rps'), rps > 0 ? fmtRps(rps) : null, r._prps, rps); r._prps = rps;
+        setNum(r.el.querySelector('.js-total'), r.total > 0 ? fmtInt(r.total) : null, r._ptot, r.total); r._ptot = r.total;
+        r.el.querySelector('.js-last').innerHTML = r.lastSeen ? fmtTime(new Date(r.lastSeen)) : '<span class="dash">—</span>';
+        setSrc(r.el.querySelector('.js-src'), top);
+
+        // live/idle
+        const since = now - r.lastSeen;
+        r.el.classList.toggle('is-live', !!r.lastSeen && since < 1500);
+        r.el.classList.toggle('is-idle', !r.lastSeen || since > 10000);
+      }
+
+      // header
+      document.getElementById('hs-pps').textContent = fmtRps(aggPps);
+      document.getElementById('hs-ports').textContent = String(PORTS.length);
+      document.getElementById('hs-uptime').textContent = fmtUptime(now - bootAt);
+
+      // aggregate
+      document.getElementById('ag-pps').textContent = fmtRps(aggPps);
+      document.getElementById('ag-packets').textContent = fmtInt(grandTotal);
+      document.getElementById('ag-sources').textContent = String(allIps.size);
+      aggHistory.push(aggPps);
+      while (aggHistory.length > AGG_MAX) aggHistory.shift();
+      drawAgg();
+
+      // top sources
+      renderSources(globalCounts);
+    }
+
+    function avg(a) { if (!a.length) return 0; let s = 0; for (const x of a) s += x; return s / a.length; }
+    function fmtUptime(ms) {
+      const s = Math.floor(ms/1000), h = Math.floor(s/3600), m = Math.floor((s%3600)/60), r = s%60;
+      if (h>0) return `${h}h${pad(m)}m`; if (m>0) return `${m}m${pad(r)}s`; return `${r}s`;
+    }
+
+    function setNum(el, html, prev, curr) {
+      el.innerHTML = html != null ? html : '<span class="dash">—</span>';
+      if (typeof prev === 'number' && typeof curr === 'number' && prev > 0 && curr !== prev) {
+        const cls = curr > prev ? 'flash-up' : 'flash-down';
+        el.classList.remove('flash-up', 'flash-down');
+        void el.offsetWidth;
+        el.classList.add(cls);
+        clearTimeout(el.__t);
+        el.__t = setTimeout(() => el.classList.remove(cls), 120);
+      }
+    }
+    function setSrc(el, src) {
+      const cur = el.dataset.src || '';
+      if (cur === (src || '')) return;
+      if (cur) {
+        el.classList.add('fading');
+        clearTimeout(el.__t);
+        el.__t = setTimeout(() => { el.textContent = src || ''; if (!src) el.innerHTML = '<span class="dash">—</span>'; el.classList.remove('fading'); }, 200);
+      } else {
+        el.textContent = src || '';
+        if (!src) el.innerHTML = '<span class="dash">—</span>';
+      }
+      el.dataset.src = src || '';
+    }
+
+    // ── sparkline draw ──
+    function drawSpark(canvas, st) {
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, SPARK_W, SPARK_H);
+      ctx.fillStyle = COL_BASE; ctx.fillRect(0, SPARK_H - 1, SPARK_W, 1);
+      const bars = st.bars, N = bars.length;
+      if (!N && !st.current) return;
+      let maxSize = FLOOR_SIZE;
+      for (let i = 0; i < N; i++) if (bars[i].size > maxSize) maxSize = bars[i].size;
+      if (st.current && st.current.packet.size > maxSize) maxSize = st.current.packet.size;
+      const maxH = SPARK_H - 3;
+      let slide = st.current ? -STRIDE * easeOut(st.current.t) : 0;
+      for (let i = 0; i < N; i++) {
+        const b = bars[i];
+        const xBase = (SPARK_W - BAR_W) - (N - 1 - i) * STRIDE;
+        const x = Math.round(xBase + slide);
+        if (x + BAR_W < 0 || x > SPARK_W) continue;
+        const ratio = Math.min(1, b.size / maxSize);
+        const h = Math.max(1, Math.round(maxH * ratio));
+        ctx.fillStyle = b.dir === 'in' ? COL_IN : COL_OUT;
+        ctx.fillRect(x, SPARK_H - 1 - h, BAR_W, h);
+      }
+      if (st.current) {
+        const e = easeOut(st.current.t);
+        const ratio = Math.min(1, st.current.packet.size / maxSize);
+        const fullH = Math.max(1, Math.round(maxH * ratio));
+        const h = Math.max(1, Math.round(fullH * e));
+        ctx.fillStyle = COL_NEW;
+        ctx.fillRect(SPARK_W - BAR_W, SPARK_H - 1 - h, BAR_W, h);
+      }
+    }
+
+    // ── aggregate area chart ──
+    function drawAgg() {
+      const c = document.getElementById('agg-spark');
+      const dpr = window.devicePixelRatio || 1;
+      const W = Math.max(200, Math.round(c.getBoundingClientRect().width));
+      const H = 72;
+      if (c.width !== W*dpr || c.height !== H*dpr) {
+        c.width = W*dpr; c.height = H*dpr; c.style.height = H+'px';
+        const cx = c.getContext('2d'); cx.setTransform(dpr,0,0,dpr,0,0); cx.imageSmoothingEnabled = false;
+      }
+      const ctx = c.getContext('2d');
+      ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = COL_BASE; ctx.fillRect(0, H-1, W, 1);
+      const n = aggHistory.length; if (!n) return;
+      let maxV = 5; for (let i=0;i<n;i++) if (aggHistory[i] > maxV) maxV = aggHistory[i];
+      const yScale = (H - 4) / maxV;
+      const stride = W / Math.max(n, AGG_MAX);
+      const xOff = W - n * stride;
+      ctx.beginPath(); ctx.moveTo(xOff, H-1);
+      for (let i=0;i<n;i++) ctx.lineTo(xOff + i*stride, H-1 - aggHistory[i]*yScale);
+      ctx.lineTo(xOff + (n-1)*stride, H-1); ctx.closePath();
+      ctx.fillStyle = withAlpha(COL_ACT, 0.18); ctx.fill();
+      ctx.beginPath();
+      for (let i=0;i<n;i++) { const x = xOff+i*stride, y = H-1-aggHistory[i]*yScale; i===0?ctx.moveTo(x,y):ctx.lineTo(x,y); }
+      ctx.strokeStyle = COL_ACT; ctx.lineWidth = 1; ctx.stroke();
+    }
+    function withAlpha(hex, a) {
+      const m = /^#?([0-9a-f]{6})$/i.exec((hex||'').trim()); if (!m) return hex;
+      const n = parseInt(m[1],16); return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`;
+    }
+
+    // ── top sources ──
+    function renderSources(counts) {
+      const list = document.getElementById('sources-list');
+      const portsByIp = new Map();
+      for (const r of rowEls.values()) for (const s of r.sources) {
+        if (!portsByIp.has(s.ip)) portsByIp.set(s.ip, new Set());
+        portsByIp.get(s.ip).add(r.cfg.port);
+      }
+      const arr = [];
+      for (const [ip, n] of counts) arr.push({ ip, count: n, ports: Array.from(portsByIp.get(ip)||[]).sort((a,b)=>a-b) });
+      arr.sort((a,b)=>b.count-a.count);
+      const top = arr.slice(0, 7);
+      if (!top.length) { list.innerHTML = '<div class="sources-empty">no sources yet</div>'; return; }
+      list.innerHTML = top.map(s => {
+        const ports = s.ports;
+        const portsHtml = ports.length <= 3
+          ? ports.map(p=>`<span class="port-tag">:${p}</span>`).join(' ')
+          : ports.slice(0,2).map(p=>`<span class="port-tag">:${p}</span>`).join(' ') + ` <span class="port-tag">+${ports.length-2}</span>`;
+        return `<div class="src-row"><span class="src-ip">${s.ip}</span><span class="src-count">${fmtInt(s.count)}</span><span class="src-ports">${portsHtml}</span></div>`;
+      }).join('');
+    }
+
+    // ── master rAF loop (animation + drawing only) ──
+    let last = 0;
+    function frame(now) {
+      // clamp dt so a backgrounded tab (throttled rAF) doesn't fast-forward
+      // animations when it regains focus
+      const dt = Math.min(100, last ? now - last : 16); last = now;
+
+      // advance + draw each sparkline
+      for (const r of rowEls.values()) {
+        const st = r.st;
+        if (st.current) {
+          const t = Math.min(1, (now - st.current.startTime) / st.current.animMs);
+          st.current.t = t;
+          if (t >= 1) { st.bars.push(st.current.packet); if (st.bars.length > MAX_BARS) st.bars.shift(); st.current = null; }
+        }
+        if (!st.current && st.queue.length) {
+          const packet = st.queue.shift();
+          const animMs = st.queue.length > 0 ? Math.max(40, ANIM_MS / Math.max(1, 0.5 + st.queue.length*0.7)) : ANIM_MS;
+          st.current = { packet, startTime: now, animMs, t: 0 };
+          st.pulse = 1;
+        }
+        if (st.pulse > 0) { st.pulse = Math.max(0, st.pulse - dt / PULSE_MS); r.el.style.setProperty('--pulse', st.pulse.toFixed(3)); }
+        drawSpark(r.canvas, st);
+      }
+      requestAnimationFrame(frame);
+    }
+
+    // pre-seed a little aggregate history so the chart isn't empty at t=0
+    for (let i = 0; i < 80; i++) aggHistory.push(120 + Math.sin(i*0.2)*40 + Math.random()*20);
+
+    setInterval(emitTick, EMIT_MS);
+    setInterval(statsTick, TICK_MS);
+    emitTick();
+    statsTick();
+    requestAnimationFrame(frame);
+  })();
+  </script>
+</body>
+</html>
