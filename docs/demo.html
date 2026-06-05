@@ -197,7 +197,7 @@
     </main>
 
     <footer class="ftr">
-      <span class="ftr-meta">conduit/0.1 · any · 6 ports · :4200</span>
+      <span class="ftr-meta">conduit/0.1 · any · 10 ports · :4200</span>
       <span class="ftr-kbd">
         <span class="kbd-hint"><kbd>g</kbd>&nbsp;live</span>
         <span class="kbd-hint"><kbd>s</kbd>&nbsp;settings</span>
@@ -212,24 +212,30 @@
     // ── demo port definitions, each with its own traffic "personality" ──
     // rate = packets/sec target; inRatio = share of inbound; sizes biased per service
     const PORTS = [
-      { port: 22,   name: 'SSH',         icon: null,          rate: 3,   inRatio: 0.5,  sizeMin: 60,  sizeMax: 340  },
-      { port: 80,   name: '',            icon: 'nginx',       rate: 38,  inRatio: 0.62, sizeMin: 80,  sizeMax: 1480 },
-      { port: 443,  name: '',            icon: 'nginx',       rate: 96,  inRatio: 0.58, sizeMin: 90,  sizeMax: 1480 },
-      { port: 5432, name: '',            icon: 'postgresql',  rate: 22,  inRatio: 0.5,  sizeMin: 120, sizeMax: 980  },
-      { port: 6379, name: '',            icon: 'redis',       rate: 14,  inRatio: 0.55, sizeMin: 60,  sizeMax: 420, bursty: true },
-      { port: 3000, name: 'API server',  icon: 'nodedotjs',   rate: 30,  inRatio: 0.6,  sizeMin: 90,  sizeMax: 1280 },
-      { port: 8080, name: '',            icon: null,          rate: 0,   inRatio: 0.5,  sizeMin: 80,  sizeMax: 900  }  // idle row
+      { port: 22,    name: 'SSH',         icon: null,            rate: 3,   inRatio: 0.5,  sizeMin: 60,  sizeMax: 340  },
+      { port: 80,    name: '',            icon: 'nginx',         rate: 38,  inRatio: 0.62, sizeMin: 80,  sizeMax: 1480 },
+      { port: 443,   name: '',            icon: 'nginx',         rate: 96,  inRatio: 0.58, sizeMin: 90,  sizeMax: 1480 },
+      { port: 5432,  name: '',            icon: 'postgresql',    rate: 22,  inRatio: 0.5,  sizeMin: 120, sizeMax: 980  },
+      { port: 6379,  name: '',            icon: 'redis',         rate: 14,  inRatio: 0.55, sizeMin: 60,  sizeMax: 420, bursty: true },
+      { port: 3000,  name: 'API server',  icon: 'nodedotjs',     rate: 30,  inRatio: 0.6,  sizeMin: 90,  sizeMax: 1280 },
+      { port: 3306,  name: '',            icon: 'mysql',         rate: 18,  inRatio: 0.5,  sizeMin: 120, sizeMax: 900  },
+      { port: 27017, name: '',            icon: 'mongodb',       rate: 26,  inRatio: 0.55, sizeMin: 110, sizeMax: 1100 },
+      { port: 9200,  name: 'Elastic',     icon: 'elasticsearch', rate: 12,  inRatio: 0.6,  sizeMin: 140, sizeMax: 1320, bursty: true },
+      { port: 8080,  name: '',            icon: null,            rate: 0,   inRatio: 0.5,  sizeMin: 80,  sizeMax: 900  }  // idle row
     ];
 
     // pools of source IPs per port so "top source" shifts over time
     const SRC_POOLS = {
-      22:   ['10.0.1.9', '192.168.10.14', '100.86.81.90'],
-      80:   ['192.168.1.18', '10.0.6.1', '172.20.4.7', '188.114.97.3'],
-      443:  ['172.20.4.7', '192.168.10.200', '104.28.12.9', '162.158.78.21', '10.0.1.9'],
-      5432: ['10.0.4.7', '10.0.2.18', '127.0.0.1'],
-      6379: ['10.0.1.9', '127.0.0.1', '10.0.0.1'],
-      3000: ['10.0.1.1', '192.168.1.18', '10.0.4.21', '100.66.134.210'],
-      8080: ['10.0.4.21']
+      22:    ['10.0.1.9', '192.168.10.14', '100.86.81.90'],
+      80:    ['192.168.1.18', '10.0.6.1', '172.20.4.7', '188.114.97.3'],
+      443:   ['172.20.4.7', '192.168.10.200', '104.28.12.9', '162.158.78.21', '10.0.1.9'],
+      5432:  ['10.0.4.7', '10.0.2.18', '127.0.0.1'],
+      6379:  ['10.0.1.9', '127.0.0.1', '10.0.0.1'],
+      3000:  ['10.0.1.1', '192.168.1.18', '10.0.4.21', '100.66.134.210'],
+      3306:  ['10.0.4.7', '10.0.2.18', '10.0.1.1'],
+      27017: ['10.0.2.18', '10.0.4.21', '10.0.1.1', '127.0.0.1'],
+      9200:  ['10.0.6.1', '10.0.4.7', '192.168.1.18'],
+      8080:  ['10.0.4.21']
     };
 
     // ── colors from CSS ──
