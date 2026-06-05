@@ -325,6 +325,13 @@ function startCapture() {
     return;
   }
 
+  // Different libpcap builds report link types either as "ETHERNET" or
+  // as "LINKTYPE_ETHERNET" — strip the prefix once so the dispatch below
+  // doesn't need to handle both forms.
+  if (typeof linkType === 'string' && linkType.startsWith('LINKTYPE_')) {
+    linkType = linkType.slice('LINKTYPE_'.length);
+  }
+
   captureStatus.ok = true;
   captureStatus.message = `capturing on ${device}`;
   console.log(`[conduit] ${captureStatus.message} (linkType=${linkType})`);
