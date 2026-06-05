@@ -55,7 +55,7 @@
   // ── state ───────────────────────────────────────────────────
 
   const state = {
-    config: { ports: [], dashboardPort: 4200, interface: null },
+    config: { ports: [], dashboardPort: 4200, bindHost: '0.0.0.0', interface: null },
     stats: {},
     captureOk: false,
     captureMsg: 'connecting…',
@@ -706,6 +706,7 @@
     });
 
     document.getElementById('dash-port').value = state.config.dashboardPort;
+    document.getElementById('bind-host').value = state.config.bindHost || '0.0.0.0';
     document.getElementById('iface').value     = state.config.interface || '';
     setSaveHint('', '');
   }
@@ -776,11 +777,12 @@
 
   document.getElementById('save-dash').addEventListener('click', () => {
     const dp    = Number(document.getElementById('dash-port').value);
+    const host  = document.getElementById('bind-host').value.trim() || '0.0.0.0';
     const iface = document.getElementById('iface').value.trim();
     if (!Number.isInteger(dp) || dp < 1 || dp > 65535) {
       setSaveHint('invalid dashboard port', 'fail'); return;
     }
-    putConfig({ dashboardPort: dp, interface: iface || null })
+    putConfig({ dashboardPort: dp, bindHost: host, interface: iface || null })
       .then(() => setSaveHint('saved — restart for listener changes', 'ok'))
       .catch((err) => setSaveHint(err.message, 'fail'));
   });

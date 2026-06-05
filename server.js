@@ -1,6 +1,7 @@
 'use strict';
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const http = require('http');
 const { WebSocketServer } = require('ws');
@@ -10,6 +11,12 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 
 const DEFAULT_CONFIG = {
   dashboardPort: 4200,
+  // Address to bind the dashboard HTTP server to.
+  //   '0.0.0.0' = listen on every IPv4 interface (default — reachable from LAN)
+  //   '127.0.0.1' = localhost only
+  //   '::'       = listen on every IPv6 interface (and IPv4 via dual-stack)
+  //   'eth0'-style addresses can be looked up via `ip a` / `ipconfig`
+  bindHost: '0.0.0.0',
   interface: null,
   ports: []
 };
@@ -57,9 +64,39 @@ setInterval(() => {
   broadcast({ type: 'stats', stats: computeAllStats() });
 }, STATS_TICK_MS);
 
-server.listen(config.dashboardPort, () => {
-  console.log(`[conduit] dashboard listening on http://localhost:${config.dashboardPort}`);
+server.listen(config.dashboardPort, config.bindHost, () => {
+  const port = config.dashboardPort;
+  const host = config.bindHost;
+  console.log(`[conduit] dashboard listening on ${host}:${port}`);
+  const urls = dashboardUrls(host, port);
+  if (urls.length) {
+    console.log('[conduit] reachable at:');
+    for (const u of urls) console.log('           ' + u);
+  }
 });
+
+function dashboardUrls(host, port) {
+  // localhost-only bind → just print the loopback URL
+  if (host === '127.0.0.1' || host === '::1' || host === 'localhost') {
+    return [`http://localhost:${port}`];
+  }
+  // any "bind to everything" host → enumerate LAN-facing IPv4 interfaces
+  const all = host === '0.0.0.0' || host === '::' || host === '*';
+  const urls = [`http://localhost:${port}`];
+  if (!all) {
+    urls.push(`http://${host}:${port}`);
+    return urls;
+  }
+  const ifaces = os.networkInterfaces();
+  for (const name of Object.keys(ifaces)) {
+    for (const ni of ifaces[name] || []) {
+      if (ni.family === 'IPv4' && !ni.internal) {
+        urls.push(`http://${ni.address}:${port}  (${name})`);
+      }
+    }
+  }
+  return urls;
+}
 
 // -----------------------------------------------------------------------------
 // HTTP handlers
@@ -154,6 +191,9 @@ function loadConfig() {
 function normalizeConfig(parsed) {
   const cfg = { ...DEFAULT_CONFIG, ...parsed };
   cfg.dashboardPort = Number(cfg.dashboardPort) || DEFAULT_CONFIG.dashboardPort;
+  cfg.bindHost = (typeof cfg.bindHost === 'string' && cfg.bindHost.trim())
+    ? cfg.bindHost.trim()
+    : DEFAULT_CONFIG.bindHost;
   if (!Array.isArray(cfg.ports)) cfg.ports = [];
   const seen = new Set();
   cfg.ports = cfg.ports
@@ -181,6 +221,7 @@ function writeConfigAtomically(cfg) {
 function publicConfig() {
   return {
     dashboardPort: config.dashboardPort,
+    bindHost: config.bindHost,
     interface: config.interface,
     ports: config.ports.map((p) => ({ port: p.port, name: p.name }))
   };

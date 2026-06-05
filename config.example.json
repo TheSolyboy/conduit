@@ -1,10 +1,11 @@
 {
   "dashboardPort": 4200,
+  "bindHost": "0.0.0.0",
   "interface": null,
   "ports": [
-    { "port": 22, "name": "SSH" },
-    { "port": 80, "name": "HTTP" },
-    { "port": 443, "name": "HTTPS" },
-    { "port": 5432, "name": "Postgres" }
+    { "port": 22,   "name": "" },
+    { "port": 80,   "name": "" },
+    { "port": 443,  "name": "" },
+    { "port": 5432, "name": "" }
   ]
 }

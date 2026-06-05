@@ -45,6 +45,7 @@ The fastest path is the settings page in the dashboard header — add, rename, r
 ```json
 {
   "dashboardPort": 4200,
+  "bindHost": "0.0.0.0",
   "interface": null,
   "ports": [
     { "port": 22,   "name": "" },
@@ -56,9 +57,43 @@ The fastest path is the settings page in the dashboard header — add, rename, r
 
 A blank `name` triggers auto-detection — port 80 gets the nginx logo, 5432 gets the postgres logo, and so on. Type a name to override with custom text.
 
+`bindHost` controls which network interface the dashboard listens on:
+- `"0.0.0.0"` (default) — reachable from your LAN at `http://<server-ip>:4200`
+- `"127.0.0.1"` — localhost only, useful when running over SSH with port-forwarding
+- `"::"` — IPv6 + IPv4 dual-stack
+
 `interface: null` auto-picks the first non-loopback interface libpcap finds. Set it explicitly (`"eth0"`, `"en0"`, `"wlan0"`) to pin it.
 
-Changing `dashboardPort` or `interface` requires a restart. Port list changes do not.
+Changing `dashboardPort`, `bindHost`, or `interface` requires a restart. Port list changes do not.
+
+### Reaching it from another machine
+
+At startup, conduit prints every URL the dashboard is reachable at — copy one and open it from your laptop:
+
+```
+[conduit] dashboard listening on 0.0.0.0:4200
+[conduit] reachable at:
+           http://localhost:4200
+           http://192.168.1.42:4200  (eth0)
+           http://10.8.0.7:4200      (wg0)
+```
+
+If you can't connect, the firewall is the usual cause — open the port:
+
+```sh
+# Debian/Ubuntu (ufw)
+sudo ufw allow 4200/tcp
+
+# Fedora/RHEL (firewalld)
+sudo firewall-cmd --add-port=4200/tcp --permanent && sudo firewall-cmd --reload
+```
+
+The dashboard is **unauthenticated** — only expose it on networks you trust, or restrict `bindHost` to `127.0.0.1` and reach it over an SSH tunnel:
+
+```sh
+ssh -L 4200:127.0.0.1:4200 user@your-server
+# then open http://localhost:4200 on your laptop
+```
 
 ## Run without sudo (Linux)
 

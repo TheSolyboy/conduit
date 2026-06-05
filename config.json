@@ -1,12 +1,31 @@
 {
   "dashboardPort": 4200,
+  "bindHost": "0.0.0.0",
   "interface": null,
   "ports": [
-    { "port": 22, "name": "" },
-    { "port": 80, "name": "" },
-    { "port": 443, "name": "" },
-    { "port": 5432, "name": "" },
-    { "port": 6379, "name": "" },
-    { "port": 8080, "name": "" }
+    {
+      "port": 22,
+      "name": "Port 22"
+    },
+    {
+      "port": 80,
+      "name": "Port 80"
+    },
+    {
+      "port": 443,
+      "name": "Port 443"
+    },
+    {
+      "port": 5432,
+      "name": "Port 5432"
+    },
+    {
+      "port": 6379,
+      "name": "Port 6379"
+    },
+    {
+      "port": 8080,
+      "name": "Port 8080"
+    }
   ]
 }
