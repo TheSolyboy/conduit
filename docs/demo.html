@@ -252,7 +252,7 @@
     // stride/width derive per-canvas so 60 bars always span the width.
     const SPARK_H = 28, MAX_BARS = 60, SPARK_W_MIN = 120, SPARK_W_INIT = 200;
     const ANIM_MS = 150, FLOOR_SIZE = 200, PULSE_MS = 400, MAX_QUEUE = 24;
-    const sparkGeom = (w) => { const stride = w / MAX_BARS; const barW = Math.max(2, Math.min(5, Math.round(stride * 0.6))); return { stride, barW }; };
+    const sparkGeom = (w) => ({ stride: w / MAX_BARS, barW: 2 });
 
     // size a row canvas to its chart column's current width
     function sizeCanvas(canvas) {

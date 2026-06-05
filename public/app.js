@@ -80,12 +80,11 @@
   const PULSE_MS   = 400;
   const MAX_QUEUE  = 24;           // queued packets above this commit instantly
 
-  // bar stride + width for a given canvas width: 60 bars fill the space,
-  // bars thicken modestly as the column gets wider (2 → 5px)
+  // bar stride + width for a given canvas width: 60 bars spread to fill the
+  // space, but the bars stay thin (2px) — the gap grows, not the bar
   function sparkGeom(w) {
     const stride = w / MAX_BARS;
-    const barW = Math.max(2, Math.min(5, Math.round(stride * 0.6)));
-    return { stride, barW };
+    return { stride, barW: 2 };
   }
 
   // colors resolved at boot from CSS custom properties
