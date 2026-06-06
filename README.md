@@ -16,6 +16,11 @@
   <img src="docs/conduitshowcase.gif" alt="conduit live dashboard — animated demo" width="100%" />
 </p>
 
+<p align="center">
+  <a href="https://thesolyboy.github.io/conduit/"><b>▶ Open the live demo</b></a>
+  &nbsp;·&nbsp; runs in your browser with synthetic traffic — no install, no capture
+</p>
+
 ---
 
 ## What it does
